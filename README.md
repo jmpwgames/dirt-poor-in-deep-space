@@ -1,4 +1,4 @@
-# Dirt Poor in Deep Space
+![Title](https://github.com/user-attachments/assets/91dc4fe6-bbde-430d-a007-ea8949515456)
 
 Play here: https://jmpwgames.github.io/dirt-poor-in-deep-space/
 
