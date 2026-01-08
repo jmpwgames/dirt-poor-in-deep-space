@@ -305,7 +305,7 @@
           "the radio crackles like it ain't been loved in years",
           "you hear laughter, then coughing, then more laughter",
           "a dispatcher drawls slow as molasses",
-          "somebody's music leaks through the bulkheads—off key and proud",
+          "somebody's music leaks through the bulkheads - off key and proud",
           "tools clatter like a rainstorm in a tin shed"
         ]
       },
@@ -337,7 +337,7 @@
           "comms are crisp and quiet, like folks got money to lose",
           "a greeter voice says 'howdy' like it means 'don't cause trouble'",
           "the station hum is so clean it near on feels judgmental",
-          "a clerk reminds you of the rules—politely, but sharp",
+          "a clerk reminds you of the rules - politely, but sharp",
           "nobody raises their voice, but everybody hears everything"
         ]
       }
@@ -364,6 +364,9 @@
 
     const STARTING_CREDITS = 250;
     const STARTING_DEBT = 25000;
+
+    // Repo men / debt failure
+    const DEBT_FAILURE_THRESHOLD = 200000;
 
     // =========================================================
     // FLAVOR TEXT (TRIMMED)
@@ -405,15 +408,15 @@
 
     const CB_CHATTER = [
       `Breaker one-nine, this is Mudrunner out of Dust Creek, anyone got eyes on lane traffic?`,
-      `How 'bout ya, rustbuckets—this here's Black Dog, ridin' heavy and runnin' late.`,
+      `How 'bout ya, rustbuckets - this here's Black Dog, ridin' heavy and runnin' late.`,
       `Evenin' spacers, this is Tractor Pull, haulin' rocks and bad decisions through the line.`,
-      `Breaker breaker, Grease Angel here—y'all keep it slow past Holler Point, patrols are thick.`,
-      `This is Freight Train Twelve callin' from the dark side—someone left a crate floatin' in the lane.`,
+      `Breaker breaker, Grease Angel here - y'all keep it slow past Holler Point, patrols are thick.`,
+      `This is Freight Train Twelve callin' from the dark side - someone left a crate floatin' in the lane.`,
       `Midnight Rambler checkin' in, coffee's bad and the company’s worse, how's your run lookin'?`,
       `Rustbucket Row switchboard, y'all speak up one at a time, can't hear nothin' but static and lies.`,
       `This is Gravel Ghost, slidin' quiet through the back road vectors. Keep your noses clean, haulers.`,
-      `Breaker, Longhaul Jack here—if you see my trailer drifting, she ain't stolen, she's just lazy.`,
-      `Lowcountry Lark checkin' in—stars look good, schedule looks bad.`
+      `Breaker, Longhaul Jack here - if you see my trailer drifting, she ain't stolen, she's just lazy.`,
+      `Lowcountry Lark checkin' in - stars look good, schedule looks bad.`
     ];
 
     // =========================================================
@@ -429,8 +432,8 @@
 
     const INTRO_WELCOME_LINES = [
       "Welcome to Graveyard Orbit.",
-      "Welcome to Graveyard Orbit—where the welds are tired and the bills ain't.",
-      "Welcome to Graveyard Orbit. Try not to scrape the paint—if you even got any left.",
+      "Welcome to Graveyard Orbit - where the welds are tired and the bills ain't.",
+      "Welcome to Graveyard Orbit. Try not to scrape the paint - if you even got any left.",
       "Welcome to Graveyard Orbit. Keep your comms polite and your pockets lighter than your debt.",
       "Welcome to Graveyard Orbit, partner. Out here, the stars don't spot you nothin'."
     ];
@@ -441,7 +444,7 @@
       "Your scopes show scrap fields, tired beacons, and a whole lotta empty between.",
       "Somewhere in the dark, a gate hums like a hymn you don't believe in anymore.",
       "A station bell chimes on the hour, like it's tryin' to remind folks time still matters.",
-      "Graveyard Orbit spins quiet today—quiet enough to make you nervous.",
+      "Graveyard Orbit spins quiet today - quiet enough to make you nervous.",
       "A tug drone drifts past, patched up with tape and hope, lookin' like a cousin of your own ship."
     ];
 
@@ -449,7 +452,7 @@
       "Your ship's held together with duct tape, prayer, and overdue invoices.",
       "Your ship's a rust-colored promise that barely keeps its word.",
       "Your ship rattles when you breathe wrong, but it still answers the throttle.",
-      "Your ship ain't pretty, but it's yours—at least until the collectors find it.",
+      "Your ship ain't pretty, but it's yours - at least until the collectors find it.",
       "Your ship smells like hot wiring and cold coffee. That's home, I reckon."
     ];
 
@@ -465,15 +468,15 @@
       "The honest jobs are taken. The safe lanes are bought. What's left lives in the cracks.",
       "Out here, every paycheck's got teeth, and every shortcut's got a price.",
       "You can make a living honest, but you can't make it fast. Not with your numbers.",
-      "There's work if you don't ask too many questions—and if you don't mind the answers.",
+      "There's work if you don't ask too many questions - and if you don't mind the answers.",
       "The station bar doubles as a mission board, confession booth, and last-chance chapel."
     ];
 
     const INTRO_CLOSERS = [
       "Keep flyin'. Keep hustlin'. Keep breathin'.",
-      "One day you might make it out alive—or at least make it out even.",
+      "One day you might make it out alive - or at least make it out even.",
       "Someday the numbers might turn your way. Today ain't that day.",
-      "Ain't no heroes in the lane—just folks tryin' to stay afloat.",
+      "Ain't no heroes in the lane - just folks tryin' to stay afloat.",
       "Point the nose at the next job and hope the universe blinks first."
     ];
 
@@ -934,7 +937,7 @@
 
       if (loss > 0) {
         game.player.credits -= loss;
-        lines.push("They don't bother with hull—just latch on, hack your accounts, and kick free.");
+        lines.push("They don't bother with hull - just latch on, hack your accounts, and kick free.");
         lines.push(`You lose ${loss} credits to pirate skimming.`);
       } else {
         lines.push("You swing wide, dump heat, and light them up with static. They break off.");
@@ -963,7 +966,7 @@
             "",
             "The ledger ticks down to 0.",
             "No collectors on your tail. No interest compounding in the dark.",
-            "You wait for the relief to hit—and instead you feel the vastness of the lane ahead of you.",
+            "You wait for the relief to hit - and instead you feel the vastness of the lane ahead of you.",
             "The journey has just begun.",
             "",
             `Word travels fast. Piracy settles into a steady ${Math.floor(PIRACY_FIXED_RATE * 100)}%.`,
@@ -1215,7 +1218,8 @@
       const roll = Math.random();
 
       if (roll < successThresh) {
-        const amount = randInt(1, 4);
+        // Mining yield increases by +1 unit per mining upgrade tier.
+        const amount = randInt(1, 4) + miningTier;
 
         const addedOre = addCargo("Ore", amount);
         if (addedOre > 0) {
@@ -1224,7 +1228,7 @@
             lines.push("You can't fit the rest. The hold is at capacity.");
           }
         } else {
-          lines.push("You find Ore, easy—space for it, not so much. The hold is full, so you head back with nothing.");
+          lines.push("You find Ore, easy - space for it, not so much. The hold is full, so you head back with nothing.");
         }
 
         if (Math.random() < 0.15) {
@@ -1329,11 +1333,15 @@
     }
 
     function checkGameOver() {
-      if (game.player.credits < -2500) {
-        appendOutput("\nThe collectors finally tow your ship and what's left of you.");
-        appendOutput("Out here, some debts don't get paid in credits.");
+      // Debt-based failure: repo men seize your ship mid-flight.
+      if (game.player.debt >= DEBT_FAILURE_THRESHOLD) {
+        appendOutput("\nRepo men cut in on your comms with a calm voice and a mean little chuckle.");
+        appendOutput("A tow clamp bites the hull. Your controls go dead like somebody pulled the soul out of the ship.");
+        appendOutput("You hear boots on the gangway, then cold hands on your collar.");
+        appendOutput("They seize your ship mid-flight and throw you out the airlock.");
         game.mode = "gameOver";
         appendOutput("Game over. Type 'new' to start a new run, or 'load' to load a save.");
+        return;
       }
     }
 
@@ -2262,7 +2270,10 @@ function handleSpacejackCommand(raw) {
     function initNewGame() {
       clearOutput();
       game.systems = SYSTEM_NAMES.map(name => new GameSystem(name));
-      const starting = choice(game.systems);
+
+      // Always start at an average-wealth station.
+      const avgStations = game.systems.filter(s => s.wealth === "average");
+      const starting = avgStations.length ? choice(avgStations) : choice(game.systems);
       game.player = new Player(starting);
       game.mode = "init";
       game.flags = {
