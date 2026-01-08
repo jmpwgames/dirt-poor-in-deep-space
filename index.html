@@ -1,0 +1,2193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Mobile-friendly viewport; avoid over-constraining scaling -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dirt Poor in Deep Space v1b</title>
+  <style>
+    :root {
+      /* Easy knob for global scaling on mobile */
+      font-size: 13px;
+    }
+
+    @media (max-width: 1000px) {
+      :root {
+        font-size: 13px;
+      }
+    }
+
+    /* Allow the whole page to scroll inside the itch.io iframe */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    body {
+      background: #000000;
+      color: #e5e5e5;
+      font-family: monospace;
+      display: flex;
+      flex-direction: column;
+
+      /* Allow the document to be taller than the viewport */
+      min-height: 100vh;
+      height: auto;
+    }
+
+    #game-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      padding: 0.5rem;
+      box-sizing: border-box;
+      gap: 0.4rem;
+    }
+
+    /* Extra bottom padding on small screens so input can scroll above keyboard */
+    @media (max-width: 1000px) {
+      #game-container {
+        padding-bottom: 0rem;
+      }
+    }
+
+    #output {
+      flex: 1;
+      background: #000000;
+      border: 1px solid #333;
+      padding: 0.5rem;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.4;
+      font-size: 0.9rem;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    #input-row {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    #prompt {
+      padding: 0 0.1rem;
+      align-self: center;
+      font-size: 1rem;
+    }
+
+    #command {
+      flex: 1;
+      background: #000000;
+      color: #e5e5e5;
+      border: 1px solid #444;
+      padding: 0.4rem 0.5rem;
+      font-family: monospace;
+      font-size: 1rem;
+      min-height: 2.2rem;
+      box-sizing: border-box;
+    }
+
+    #command:focus {
+      outline: none;
+      border-color: #7ab8ff;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="output"></div>
+    <div id="input-row">
+      <span id="prompt">&gt;</span>
+      <input id="command" type="text" autocomplete="off" />
+    </div>
+  </div>
+
+  <script>
+    if ("scrollRestoration" in history) {
+      history.scrollRestoration = "manual";
+    }
+
+    // =========================================================
+    // SHUFFLED LOOP HELPER
+    // =========================================================
+
+    class ShuffleCycle {
+      constructor(items) {
+        this.items = items.slice();
+        this.order = [];
+        this.idx = 0;
+        this._reshuffle();
+      }
+
+      _reshuffle() {
+        if (!this.items.length) {
+          this.order = [];
+          this.idx = 0;
+          return;
+        }
+        this.order = Array.from(this.items.keys());
+        for (let i = this.order.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [this.order[i], this.order[j]] = [this.order[j], this.order[i]];
+        }
+        this.idx = 0;
+      }
+
+      next() {
+        if (!this.items.length) return null;
+        if (this.idx >= this.order.length) {
+          this._reshuffle();
+        }
+        const item = this.items[this.order[this.idx]];
+        this.idx += 1;
+        return item;
+      }
+
+      getState() {
+        return {
+          order: this.order.slice(),
+          idx: this.idx
+        };
+      }
+
+      loadState(state) {
+        if (!state || !Array.isArray(state.order)) return;
+        this.order = state.order.slice();
+        this.idx = state.idx || 0;
+        if (this.idx > this.order.length) this.idx = 0;
+      }
+    }
+
+    // =========================================================
+    // DATA POOLS
+    // =========================================================
+
+    const SYSTEM_NAMES = [
+      "Rustbucket Row",
+      "Dust Creek Station",
+      "Longhaul Junction",
+      "Gravel Spur",
+      "Wayfarer Stop",
+      "Red Dirt Depot",
+      "Holler Point",
+      "Grange Station",
+      "Backline Cross",
+      "Dead Man's Dock",
+      "Last Chance Hub",
+      "Sagebrush Ring",
+      "Truckstop Theta",
+      "Cowpoke Transfer",
+      "Bluegrass Spindle",
+      "Rustwheel Station",
+      "Trailerlight Yard",
+      "Haywire Depot",
+      "Crosswind Relay",
+      "Dry Gulch Port",
+      "Splitrail Station",
+      "Broken Axle Gate",
+      "Outrider's Rest",
+      "Gravelbite Hub",
+      "Lowcountry Pier"
+    ];
+
+    const WEALTH_LEVELS = ["poor", "average", "rich"];
+
+    const CARGO_TYPES = [
+      "Water", "Ore", "Luxury Goods",
+      "Medical Supplies", "Weapons", "AI Cores"
+    ];
+
+    const PASSENGER_TYPES = [
+      "Scientist", "Refugee", "Corporate Agent", "Smuggler", "Tourist",
+      "Diplomat", "Mercenary", "Religious Pilgrim", "Prospector", "Colonist",
+      "Engineer", "Medical Specialist", "Data Courier", "Political Exile",
+      "Bounty Hunter", "Trade Delegate", "Cultural Attaché", "Journalist",
+      "Archaeologist", "Terraforming Technician", "Union Representative",
+      "Security Contractor", "Spacer Family", "Cryo-Transportee", "AI Ethicist",
+      "Noble Envoy", "Black Market Broker", "Cartographer", "Astrobiologist",
+      "Relief Worker", "Corporate Auditor", "Stowaway", "Salvager",
+      "Legal Advocate", "Frontier Marshal", "Historical Preservationist",
+      "Xenolinguist", "Celebrity", "Systems Inspector", "Retired Officer"
+    ];
+
+    const BOUNTY_TARGETS = [
+      "Pirate Captain", "Smuggler Lord", "Rogue AI Drone",
+      "Faction Defector", "Warlord Enforcer", "Corporate Fugitive",
+      "Cult Leader", "Assassin Cell Operative", "Black Market Fixer",
+      "Renegade Naval Officer", "Illegal Cloning Ring Director",
+      "Slaver Overseer", "Terror Network Courier", "Gene-Hacker",
+      "Void Raider Lieutenant", "Synthetic Rights Extremist",
+      "Weapons Trafficker", "Data-Theft Specialist", "Rebel Propagandist",
+      "Crime Syndicate Accountant", "Unlicensed Psionic",
+      "Orbital Saboteur", "Espionage Handler", "Runaway War Machine",
+      "Cult Inquisitor", "Bio-Weapons Researcher",
+      "Anarchist Cell Leader", "Counterfeit Identity Broker",
+      "Rogue Terraformer", "Prison Break Architect",
+      "Insurrection Financier", "Exiled Noble Turned Criminal",
+      "Signal Interceptor", "Black Ops Survivor",
+      "Forbidden Tech Smuggler", "Clone Rights Activist (Armed)",
+      "Deep-Space Hijacker", "Ghost Fleet Navigator",
+      "Planetary Governor (Wanted)", "Unknown Entity"
+    ];
+
+    // =========================================================
+    // TUNING KNOBS
+    // =========================================================
+
+    const CREDIT_MULTIPLIER = 2.5;
+    const TRADE_SELL_MULTIPLIER = 1.0; // sell at the advertised buy price
+    const INTEREST_RATE = 0.02; // 2%
+
+    // Cargo capacity
+    const BASE_CARGO_CAPACITY = 20;
+    const SMUGGLER_HOLD_CAPACITY_PER_TIER = 10;
+
+    // Spacejack
+    const SPACEJACK_BET = 1000;
+    const SPACEJACK_WINNINGS = 1000; // net profit on a win (bet is already deducted)
+    const SPACEJACK_DEALER_STAND = 17;
+
+    // Piracy tuning:
+    // Fixed chance for every off-base interaction (travel, mission, mining).
+    // No wealth/cargo/credits modifiers.
+    const PIRACY_FIXED_RATE = 0.25; // 25%
+
+    // Mining free-action success tuning
+    const MINING_BASE_SUCCESS = 0.6;
+    const MINING_SUCCESS_PER_TIER = 0.1;
+    const MINING_MAX_SUCCESS = 0.9;
+
+    // Mission success tuning (full-success only; partial handled separately)
+    const MISSION_BASE_SUCCESS = 0.5;
+    const MISSION_MAX_SUCCESS = 0.8;
+    const NON_UPGRADED_MAX_SUCCESS = 0.7;
+
+    // Risk–reward scaling: missions with structural chance below this
+    // get increased payouts up to MAX_RISK_REWARD_MULT at MIN_RISK_CHANCE.
+    const RISK_REWARD_PIVOT = 0.5;       // 50%
+    const MIN_RISK_CHANCE = 0.1;         // 10%
+    const MAX_RISK_REWARD_MULT = 3.5;    // up to ~3.5x at 10%
+
+    // Chance that any job board will contain exactly one 100% mission
+    const BOARD_GUARANTEED_RATE = 0.03;  // ~3% of boards, <5% globally
+
+    const STARTING_CREDITS = 200;
+    const STARTING_DEBT = 20000;
+
+    // =========================================================
+    // FLAVOR TEXT (TRIMMED)
+    // =========================================================
+
+    const BAR_SCENES = [
+      `The bar smells like spilled beer and hot coolant.`,
+      `A battered jukebox wheezes out old rim-country tunes.`,
+      `Dust from the cargo bays drifts in every time the door cycles.`,
+      `Someone's welded a horseshoe to the bulkhead for luck. It's upside down.`,
+      `Bootprints in hydraulic fluid track across the scuffed deck plates.`,
+      `The bartender polishes chipped mugs with a rag older than the station.`,
+      `A cracked viewscreen shows a looping feed of passing freighters.`,
+      `Ceiling fans spin slow, shoving warm, recycled air in lazy circles.`,
+      `A neon sign shaped like a rocket flickers between OPEN and OPE.`,
+      `The ice in your drink tastes faintly of rust and antifreeze.`
+    ];
+
+    const NPC_OPENERS = [
+      `A stranger in a faded flight jacket tips their hat and sits across from you.`,
+      `A scarred hauler drops a datachip on your table like it's burning a hole in his hand.`,
+      `Someone says your name like they've been practicing it all week.`,
+      `A calloused hand nudges a cloudy glass your way. "From a friend," they say.`,
+      `A figure in a sun-bleached duster takes the seat you were saving.`,
+      `A courier in mud-caked boots sets a small crate down and backs away.`,
+      `Your comm goes dead mid-sentence, and a quiet voice says, "Time to listen."`,
+      `A voice behind you drawls, "Mind if I borrow this chair, captain?"`,
+      `A mercenary sets a dented helmet on your table and stares until you look up.`,
+      `A jittery local keeps counting exits instead of drinks.`
+    ];
+
+    const FAILURE_TEXT = [
+      `Station security picks today to actually read the paperwork.`,
+      `Local raiders hit the lane you swore was the quiet one.`,
+      `Something important in your ship pops, hisses, and stops working.`,
+      `Your fixer blocks your calls and forwards your file to the law.`,
+      `The universe cashes in on a debt you didn't realize you owed.`
+    ];
+
+    const CB_CHATTER = [
+      `Breaker one-nine, this is Mudrunner out of Dust Creek, anyone got eyes on lane traffic?`,
+      `How 'bout ya, rustbuckets—this here's Black Dog, ridin' heavy and runnin' late.`,
+      `Evenin' spacers, this is Tractor Pull, haulin' rocks and bad decisions through the line.`,
+      `Breaker breaker, Grease Angel here—y'all keep it slow past Holler Point, patrols are thick.`,
+      `This is Freight Train Twelve callin' from the dark side—someone left a crate floatin' in the lane.`,
+      `Midnight Rambler checkin' in, coffee's bad and the company’s worse, how's your run lookin'?`,
+      `Rustbucket Row switchboard, y'all speak up one at a time, can't hear nothin' but static and lies.`,
+      `This is Gravel Ghost, slidin' quiet through the back road vectors. Keep your noses clean, haulers.`,
+      `Breaker, Longhaul Jack here—if you see my trailer drifting, she ain't stolen, she's just lazy.`,
+      `Lowcountry Lark checkin' in—stars look good, schedule looks bad.`
+    ];
+
+    // =========================================================
+    // MUSIC TRACKS
+    // =========================================================
+
+    const MUSIC_TRACKS = Array.from({ length: 20 }, (_, i) => `audio/${i + 1}.mp3`);
+
+    let bgmAudio = null;
+    let bgmStarted = false;
+    let bgmFadedIn = false;
+
+    // =========================================================
+    // MUSIC CONTROL
+    // =========================================================
+
+    function playNextTrack() {
+      if (!MUSIC_TRACKS.length) return;
+      const nextSrc = musicCycle.next();
+      if (!nextSrc) return;
+
+      if (!bgmAudio) {
+        bgmAudio = new Audio();
+        bgmAudio.volume = 0;
+        bgmAudio.addEventListener("ended", () => {
+          playNextTrack();
+        });
+      }
+
+      bgmAudio.src = nextSrc;
+      bgmAudio.currentTime = 0;
+
+      const playPromise = bgmAudio.play();
+      if (playPromise && typeof playPromise.then === "function") {
+        playPromise.then(() => {
+          if (!bgmFadedIn) {
+            bgmFadedIn = true;
+            const target = 0.4;
+            const steps = 20;
+            const step = target / steps;
+
+            const interval = setInterval(() => {
+              if (!bgmAudio || bgmAudio.paused) {
+                clearInterval(interval);
+                return;
+              }
+              bgmAudio.volume = Math.min(target, bgmAudio.volume + step);
+              if (bgmAudio.volume >= target) {
+                clearInterval(interval);
+              }
+            }, 100);
+          }
+        }).catch(() => {});
+      }
+    }
+
+    function startBackgroundMusicIfNeeded() {
+      if (bgmStarted) return;
+      bgmStarted = true;
+      playNextTrack();
+    }
+
+    function ensureMusicPlaying() {
+      if (!MUSIC_TRACKS.length) return;
+
+      if (bgmAudio) {
+        if (!bgmAudio.paused && !bgmAudio.ended) return;
+
+        if (bgmAudio.ended) {
+          playNextTrack();
+          return;
+        }
+
+        const playPromise = bgmAudio.play();
+        if (playPromise && typeof playPromise.then === "function") {
+          playPromise.catch(() => {});
+        }
+      } else {
+        startBackgroundMusicIfNeeded();
+      }
+    }
+
+    function fadeOutAndStopMusic(callback) {
+      if (!bgmAudio) {
+        if (callback) callback();
+        return;
+      }
+      const steps = 20;
+      const step = bgmAudio.volume / steps;
+      let currentStep = 0;
+
+      const interval = setInterval(() => {
+        if (!bgmAudio) {
+          clearInterval(interval);
+          if (callback) callback();
+          return;
+        }
+        bgmAudio.volume = Math.max(0, bgmAudio.volume - step);
+        currentStep++;
+        if (currentStep >= steps) {
+          clearInterval(interval);
+          bgmAudio.pause();
+          bgmAudio.currentTime = 0;
+          if (callback) callback();
+        }
+      }, 100);
+    }
+
+    // =========================================================
+    // CREATE SHUFFLED CYCLES
+    // =========================================================
+
+    const barSceneCycle = new ShuffleCycle(BAR_SCENES);
+    const npcOpenerCycle = new ShuffleCycle(NPC_OPENERS);
+    const failureTextCycle = new ShuffleCycle(FAILURE_TEXT);
+    const cbCycle = new ShuffleCycle(CB_CHATTER);
+    const musicCycle = new ShuffleCycle(MUSIC_TRACKS);
+
+    //  =========================================================
+    // HELPERS
+    // =========================================================
+
+    function choice(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    function weightedChoice(items, weights) {
+      let total = 0;
+      for (const w of weights) total += w;
+      let r = Math.random() * total;
+      for (let i = 0; i < items.length; i++) {
+        if (r < weights[i]) return items[i];
+        r -= weights[i];
+      }
+      return items[items.length - 1];
+    }
+
+    function randInt(a, b) {
+      return Math.floor(Math.random() * (b - a + 1)) + a;
+    }
+
+    function randFloat(a, b) {
+      return a + Math.random() * (b - a);
+    }
+
+    function getTotalCargoUnits() {
+      if (!game.player || !game.player.cargo) return 0;
+      let total = 0;
+      for (const v of Object.values(game.player.cargo)) {
+        total += v || 0;
+      }
+      return total;
+    }
+
+    function getCargoCapacity() {
+      if (!game.player || !game.player.ship) return BASE_CARGO_CAPACITY;
+      const tier = game.player.ship.smuggler_hold || 0;
+      return BASE_CARGO_CAPACITY + tier * SMUGGLER_HOLD_CAPACITY_PER_TIER;
+    }
+
+    function getAvailableCargoSpace() {
+      return Math.max(0, getCargoCapacity() - getTotalCargoUnits());
+    }
+
+    // Adds cargo up to capacity. Returns how many units were actually added.
+    function addCargo(name, amount) {
+      if (!game.player || !game.player.cargo) return 0;
+      if (!amount || amount <= 0) return 0;
+
+      const space = getAvailableCargoSpace();
+      const addAmt = Math.max(0, Math.min(space, amount));
+
+      if (addAmt <= 0) return 0;
+      if (!game.player.cargo[name]) game.player.cargo[name] = 0;
+      game.player.cargo[name] += addAmt;
+      return addAmt;
+    }
+
+    function formatWealthLabel(wealth) {
+      if (!wealth) return "";
+      return wealth.charAt(0).toUpperCase() + wealth.slice(1);
+    }
+
+    // =========================================================
+    // CORE CLASSES
+    // =========================================================
+
+    class Market {
+      constructor(wealth) {
+        this.prices = {};
+        this.generatePrices(wealth);
+      }
+      generatePrices(wealth) {
+        for (const cargo of CARGO_TYPES) {
+          let base = randInt(60, 180);
+          if (cargo === "Ore") {
+            base *= 2.0;
+          }
+          // Wealth-based baseline patterns:
+          // Poor: generally cheaper, but riskier to reach.
+          // Average: baseline.
+          // Rich: generally more expensive, but safer to reach.
+          if (wealth === "poor") {
+            base *= (0.75 + Math.random() * 0.25);   // ~0.75–1.0
+          } else if (wealth === "rich") {
+            base *= (1.25 + Math.random() * 0.35);   // ~1.25–1.6
+          } else {
+            base *= (0.9 + Math.random() * 0.3);     // ~0.9–1.2
+          }
+          const fluctuation = 0.7 + Math.random() * 0.7;
+          this.prices[cargo] = Math.floor(base * fluctuation);
+        }
+        this.prices["Asteroid Hearts"] = 2500;
+      }
+    }
+
+    class GameSystem {
+      constructor(name) {
+        this.name = name;
+        this.wealth = choice(WEALTH_LEVELS);
+        this.market = new Market(this.wealth);
+      }
+    }
+
+    class Player {
+      constructor(startSystem) {
+        this.credits = STARTING_CREDITS;
+        this.debt = STARTING_DEBT;
+        this.location = startSystem;
+        this.cargo = {};
+        this.run_alive = true;
+        this.ship = {
+          combat_laser: 0,
+          mining_laser: 0,
+          smuggler_hold: 0,
+          luxury_cabin: 0
+        };
+      }
+    }
+
+    const UPGRADE_COSTS = {
+      combat_laser: 3000,
+      mining_laser: 2000,
+      smuggler_hold: 2000,
+      luxury_cabin: 2500
+    };
+
+    function getUpgradeCost(key) {
+      const base = UPGRADE_COSTS[key];
+      const currentTier = (game.player && game.player.ship && game.player.ship[key]) || 0;
+      if (currentTier >= 3) return null;
+      return Math.floor(base * Math.pow(1.75, currentTier));
+    }
+
+    // =========================================================
+    // UI / GAME STATE
+    // =========================================================
+
+    const outputEl = document.getElementById("output");
+    const commandEl = document.getElementById("command");
+
+    let autoScrollEnabled = false;
+
+    function appendOutput(text) {
+      outputEl.textContent += text + "\n";
+      if (!autoScrollEnabled) return;
+
+      setTimeout(() => {
+        outputEl.scrollTop = outputEl.scrollHeight;
+        window.scrollTo({
+          top: document.body.scrollHeight,
+          behavior: "auto"
+        });
+      }, 0);
+    }
+
+    function clearOutput() {
+      outputEl.textContent = "";
+    }
+
+    const game = {
+      systems: [],
+      player: null,
+      mode: "init",
+      travelDestinations: [],
+      pendingMission: null,
+      pendingMissions: [],
+      flags: {
+        debtCleared: false,
+        debtClearedNotified: false
+      },
+      spacejack: null
+    };
+
+    const tradeState = {
+      phase: null,
+      action: null,
+      list: [],
+      commodity: null
+    };
+
+    // =========================================================
+    // PIRATE ATTACKS
+    // =========================================================
+
+    function pirateSpawnChance() {
+      if (!game.player) return 0;
+      return PIRACY_FIXED_RATE;
+    }
+
+    // context: "lane", "rocks", "job"
+    function maybeTriggerPirates(context, lines) {
+      const chance = pirateSpawnChance();
+      if (chance <= 0) return;
+      if (Math.random() >= chance) return;
+
+      const where =
+        context === "lane" ? "out in the lane" :
+        context === "rocks" ? "among the rocks" :
+        context === "job" ? "around the job site" :
+        "out here";
+
+      lines.push("");
+      lines.push(`Pirate signatures spike on your scopes ${where}.`);
+
+      // 0–50% loss of current credits.
+      // If the roll yields 0 loss (or you have 0 credits), treat it as a successful defense.
+      const credits = Math.max(0, Math.floor(game.player.credits || 0));
+      const frac = randFloat(0.0, 0.50);
+      const loss = Math.floor(credits * frac);
+
+      if (loss > 0) {
+        game.player.credits -= loss;
+        lines.push("They don't bother with hull—just latch on, hack your accounts, and kick free.");
+        lines.push(`You lose ${loss} credits to pirate skimming.`);
+      } else {
+        lines.push("You swing wide, dump heat, and light them up with static. They break off.");
+        lines.push("Ship defended. You take no losses.");
+      }
+      lines.push("");
+    }
+
+    // =========================================================
+    // GAME LOGIC
+    // =========================================================
+
+    function handleDebtClearedIfNeeded(lines) {
+      if (!game.player) return;
+
+      if (game.player.debt <= 0) {
+        game.player.debt = 0;
+
+        if (!game.flags.debtCleared) {
+          game.flags.debtCleared = true;
+        }
+
+        if (!game.flags.debtClearedNotified) {
+          game.flags.debtClearedNotified = true;
+          const msg = [
+            "",
+            "The ledger ticks down to 0.",
+            "No collectors on your tail. No interest compounding in the dark.",
+            "You wait for the relief to hit—and instead you feel the vastness of the lane ahead of you.",
+            "The journey has just begun.",
+            "",
+            `Word travels fast. Piracy settles into a steady ${Math.floor(PIRACY_FIXED_RATE * 100)}%.`,
+            ""
+          ];
+          if (Array.isArray(lines)) {
+            lines.push(...msg);
+          } else {
+            for (const line of msg) appendOutput(line);
+          }
+        }
+      }
+    }
+
+    function installUpgrade(key, label, conflictKey, conflictLabel) {
+      const currentTier = game.player.ship[key] || 0;
+      if (currentTier >= 3) {
+        appendOutput(`${label} is already at max tier.`);
+        return;
+      }
+      if (conflictKey && (game.player.ship[conflictKey] || 0) > 0) {
+        appendOutput(`${conflictLabel} is currently installed at tier ${game.player.ship[conflictKey]}. Installing ${label} will remove it.`);
+      }
+      const cost = getUpgradeCost(key);
+      if (cost === null) {
+        appendOutput(`${label} is already at max tier.`);
+        return;
+      }
+      if (game.player.credits < cost) {
+        appendOutput(`You can't afford that upgrade. (${cost} credits required)`);
+        return;
+      }
+      game.player.credits -= cost;
+      game.player.ship[key] = currentTier + 1;
+      if (conflictKey) game.player.ship[conflictKey] = 0;
+      appendOutput(`${label} upgraded to tier ${game.player.ship[key]} for ${cost} credits.`);
+      if (key === "smuggler_hold") {
+        appendOutput(`Cargo capacity is now ${getCargoCapacity()} units.`);
+      }
+    }
+
+    function applyInterest() {
+      if (game.player.debt <= 0) return;
+      const interest = Math.max(1, Math.floor(game.player.debt * INTEREST_RATE));
+      game.player.debt += interest;
+      appendOutput(`Debt interest accrued: +${interest} credits`);
+    }
+
+    function upgradeBonusForType(type) {
+      const ship = game.player.ship;
+      let bonus = 0;
+      if (type === "cargo") {
+        bonus = 0.1 * (ship.smuggler_hold || 0);
+      } else if (type === "passenger") {
+        bonus = 0.1 * (ship.luxury_cabin || 0);
+      } else if (type === "bounty") {
+        bonus = 0.1 * (ship.combat_laser || 0);
+      } else if (type === "mining") {
+        bonus = 0.1 * (ship.mining_laser || 0);
+      }
+      return bonus;
+    }
+
+    function generateStructuralMissionChance() {
+      // 50% risky (10–50%), 50% safer (50–70%)
+      const r = Math.random();
+      if (r < 0.5) {
+        return randFloat(MIN_RISK_CHANCE, RISK_REWARD_PIVOT);
+      }
+      return randFloat(RISK_REWARD_PIVOT, NON_UPGRADED_MAX_SUCCESS);
+    }
+
+    function riskRewardMultiplier(structuralChance) {
+      if (structuralChance >= RISK_REWARD_PIVOT) return 1.0;
+      const span = RISK_REWARD_PIVOT - MIN_RISK_CHANCE; // 0.4
+      const delta = RISK_REWARD_PIVOT - structuralChance;
+      const t = Math.max(0, Math.min(1, delta / span));
+      return 1 + t * (MAX_RISK_REWARD_MULT - 1);
+    }
+
+    function generateMission(forcedType) {
+      const dest = choice(game.systems.filter(s => s !== game.player.location));
+      const mtype = forcedType || weightedChoice(["cargo", "passenger", "bounty"], [0.4, 0.4, 0.2]);
+
+      // 1) Structural base chance (risk profile of the job itself, no upgrades)
+      const structuralChance = generateStructuralMissionChance();
+
+      // 2) Risk–reward payout multiplier based on structuralChance (before upgrades)
+      const rrMult = riskRewardMultiplier(structuralChance);
+
+      // 3) Compute base payout for this mission type
+      let baseReward;
+      let text;
+
+      if (mtype === "cargo") {
+        const cargo = choice(CARGO_TYPES);
+        const amount = randInt(4, 8);
+        baseReward = amount * randInt(35, 55);
+        baseReward = Math.floor(baseReward * 1.4);
+        text = `Haul ${amount} units of ${cargo} out to ${dest.name}. No questions, no receipts.`;
+      } else if (mtype === "passenger") {
+        const passenger = choice(PASSENGER_TYPES);
+        baseReward = randInt(300, 620);
+        baseReward = Math.floor(baseReward * 1.2);
+        text = `Carry a ${passenger} quietly from here to ${dest.name}. No manifest entry.`;
+      } else if (mtype === "bounty") {
+        const target = choice(BOUNTY_TARGETS);
+        baseReward = randInt(550, 800);
+        text = `Run down ${target} working the lanes near ${dest.name}. Proof required.`;
+      } else if (mtype === "mining") {
+        baseReward = randInt(380, 500);
+        text = `Slip out to the rocks near ${dest.name}, chew on an unmarked belt, and bring back a cut.`;
+      }
+
+      // 4) Apply risk–reward multiplier (higher payout for lower structuralChance)
+      baseReward = Math.floor(baseReward * rrMult);
+      const reward = Math.floor(baseReward * CREDIT_MULTIPLIER);
+
+      // 5) Apply upgrades to success chance (not payout)
+      const bonus = upgradeBonusForType(mtype);
+      let upgradedChance = structuralChance + bonus;
+
+      // Non-upgraded fields never go over 70%; upgraded fields capped at 80%
+      const cap = bonus > 0 ? MISSION_MAX_SUCCESS : NON_UPGRADED_MAX_SUCCESS;
+      upgradedChance = Math.min(cap, Math.max(MIN_RISK_CHANCE, upgradedChance));
+
+      return {
+        type: mtype,
+        destination: dest,
+        reward,
+        chance: upgradedChance,
+        guaranteed: false,
+        text
+      };
+    }
+
+    function travelToDestination(mission) {
+      const lines = [];
+      if (game.player.location !== mission.destination) {
+        lines.push("\nYou'll have to burn over to the job site first.");
+
+        // Pirates can hit while you burn over to a mission site
+        maybeTriggerPirates("lane", lines);
+
+        if (Math.random() < 0.30) {
+          const cbLine = cbCycle.next();
+          if (cbLine) {
+            lines.push("");
+            lines.push(`[Open Comms] ${cbLine}`);
+            lines.push("");
+          }
+        }
+
+        game.player.location = mission.destination;
+      }
+      return lines;
+    }
+
+    function resolveMission(mission) {
+      const lines = [];
+
+      lines.push("\nSpinning up for the job...");
+
+      // Pirates can hit during missions (global rate; not wealth-specific)
+      maybeTriggerPirates("job", lines);
+
+      if (Math.random() < 0.10) {
+        const cbLine = cbCycle.next();
+        if (cbLine) {
+          lines.push(`[Open Comms] ${cbLine}`);
+        }
+      }
+
+      let successChance = mission.chance ?? MISSION_BASE_SUCCESS;
+      if (!mission.guaranteed) {
+        successChance = Math.max(MIN_RISK_CHANCE, Math.min(MISSION_MAX_SUCCESS, successChance));
+      } else {
+        successChance = 1.0;
+      }
+
+      const failChance = 1 - successChance;
+      const partialChance = failChance * 0.3;
+      const partialThreshold = successChance + partialChance;
+
+      const roll = Math.random();
+
+      if (roll < successChance) {
+        game.player.credits += mission.reward;
+        lines.push("Everything holds together just long enough.");
+        lines.push(`Mission pays out: ${mission.reward} credits.`);
+
+        // 20% chance: bonus cargo 3–8 units of a random commodity
+        if (Math.random() < 0.20) {
+          const bonusCommodity = choice(CARGO_TYPES);
+          const bonusAmount = randInt(3, 8);
+          const added = addCargo(bonusCommodity, bonusAmount);
+
+          if (added > 0) {
+            lines.push(`On the side, you pick up ${added} units of ${bonusCommodity} that fall off the manifest.`);
+            if (added < bonusAmount) {
+              lines.push("You leave the rest behind. The hold is packed tight.");
+            }
+          } else {
+            lines.push(`You spot ${bonusAmount} units of ${bonusCommodity} on the side... but your hold is full. You walk away.`);
+          }
+        }
+
+      } else if (roll < partialThreshold) {
+        const partial = Math.floor(mission.reward * 0.4);
+        game.player.credits += partial;
+        lines.push("Things go sideways, but you drag something worth selling out of the wreck.");
+        lines.push(`You scrape together ${partial} credits.`);
+      } else {
+        let loss = Math.floor(mission.reward * randFloat(0.30, 0.50));
+        loss = Math.max(loss, 150);
+        game.player.credits -= loss;
+        lines.push(FAILURE_TEXT[Math.floor(Math.random() * FAILURE_TEXT.length)]);
+        lines.push(`Mission fails. You eat ${loss} credits in costs and damages.`);
+      }
+
+      return lines;
+    }
+
+    function mine() {
+      const lines = [];
+      lines.push("\nYou nose the ship out toward a played-out rock and hope it's lying.");
+
+      // Pirates can hit while you're out mining
+      maybeTriggerPirates("rocks", lines);
+
+      const miningTier = game.player.ship.mining_laser || 0;
+      let successThresh = MINING_BASE_SUCCESS + miningTier * MINING_SUCCESS_PER_TIER;
+      successThresh = Math.min(successThresh, MINING_MAX_SUCCESS);
+
+      const roll = Math.random();
+
+      if (roll < successThresh) {
+        const amount = randInt(1, 4);
+
+        const addedOre = addCargo("Ore", amount);
+        if (addedOre > 0) {
+          lines.push(`You scrape ${addedOre} units of Ore out of the rock and limp home happy enough.`);
+          if (addedOre < amount) {
+            lines.push("You can't fit the rest. The hold is at capacity.");
+          }
+        } else {
+          lines.push("You find Ore, easy—space for it, not so much. The hold is full, so you head back with nothing.");
+        }
+
+        if (Math.random() < 0.15) {
+          const addedHeart = addCargo("Asteroid Hearts", 1);
+          if (addedHeart > 0) {
+            lines.push("In the rubble, you pry loose an Asteroid Heart. Fortune favors the cold.");
+          } else {
+            lines.push("You pry loose an Asteroid Heart... then stare at your packed hold and stash it back where you found it.");
+          }
+        }
+      } else {
+        lines.push("You burn fuel, time, and patience on rocks that are mostly memories. You head back empty-handed.");
+      }
+
+      return lines;
+    }
+
+    function statusText() {
+      const p = game.player;
+      const cargoEntriesArr = Object.entries(p.cargo).filter(([, v]) => v > 0);
+      const cargoEntries = cargoEntriesArr.length
+        ? cargoEntriesArr.map(([k, v]) => `${k}: ${v}`).join(", ")
+        : "Empty";
+      const tierLabel = (t) => (t && t > 0 ? `Tier ${t}` : "None");
+      const lines = [];
+      lines.push("--- STATUS ---");
+      lines.push(`Location: ${p.location.name}`);
+      lines.push(`Credits: ${p.credits}`);
+      lines.push(`Debt: ${p.debt}`);
+      lines.push(`Cargo hold: ${getTotalCargoUnits()}/${getCargoCapacity()} units`);
+      lines.push(`Cargo: ${cargoEntries}`);
+      lines.push("Ship fit (3 tiers max):");
+      lines.push(`  Combat rig (bounties):       ${tierLabel(p.ship.combat_laser)}`);
+      lines.push(`  Mining rig (mining):         ${tierLabel(p.ship.mining_laser)}`);
+      lines.push(`  Smuggler hold (cargo/trade): ${tierLabel(p.ship.smuggler_hold)}`);
+      lines.push(`  Luxury cabin (passengers):   ${tierLabel(p.ship.luxury_cabin)}`);
+      return lines.join("\n");
+    }
+
+    function showMainMenu() {
+      appendOutput("\n--- MAIN MENU ---");
+      appendOutput("Choose an option:");
+      appendOutput("1. Visit bar");
+      appendOutput("2. Trade");
+      appendOutput("3. Travel");
+      appendOutput("4. Mine asteroids");
+      appendOutput("5. Pay debt");
+      appendOutput("6. Outfitter");
+      appendOutput("7. Spacejack");
+      appendOutput("8. Save");
+      appendOutput("9. Load");
+      appendOutput("10. Quit");
+      game.mode = "mainMenu";
+    }
+
+    function checkVictory() {
+      if (game.player.debt <= 0 && game.player.credits >= 100000) {
+        appendOutput("\nFor once, the numbers are on your side.");
+        appendOutput("No debt. Six figures in the account. A ship that still mostly flies straight.");
+        appendOutput("You sign the last of the papers, sell off what you don't need, and point the nose at a quiet star.");
+        appendOutput("Out here, that's as close to a happy ending as anyone gets.");
+        appendOutput("You ride off into the sunset.");
+        game.mode = "gameOver";
+        appendOutput("Ending reached. Type 'new' to start another run, or 'load' to revisit a saved one.");
+      }
+    }
+
+    function showMainAndCheckEnd(activityLines) {
+      if (game.mode === "gameOver") return;
+
+      // If debt is already <= 0 for any reason, normalize flags and (optionally) notify.
+      handleDebtClearedIfNeeded(activityLines);
+
+      appendOutput("");
+      applyInterest();
+
+      // Interest could push debt up only if >0; but our rules keep debt at 0 once cleared.
+      handleDebtClearedIfNeeded(activityLines);
+
+      checkVictory();
+      if (game.mode === "gameOver") return;
+      checkGameOver();
+      if (game.mode === "gameOver") return;
+
+      appendOutput(statusText());
+
+      if (activityLines && activityLines.length) {
+        for (const line of activityLines) {
+          appendOutput(line);
+        }
+      }
+
+      showMainMenu();
+    }
+
+    function enterMainLoopTurn(activityLines) {
+      showMainAndCheckEnd(activityLines);
+    }
+
+    function checkGameOver() {
+      if (game.player.credits < -2500) {
+        appendOutput("\nThe collectors finally tow your ship and what's left of you.");
+        appendOutput("Out here, some debts don't get paid in credits.");
+        game.mode = "gameOver";
+        appendOutput("Game over. Type 'new' to start a new run, or 'load' to load a save.");
+      }
+    }
+
+    function describeJob(idx, job) {
+      let label;
+      if (job.type === "cargo") label = "Cargo";
+      else if (job.type === "passenger") label = "Passenger";
+      else if (job.type === "bounty") label = "Bounty";
+      else if (job.type === "mining") label = "Mining";
+      else label = "Job";
+
+      const chancePercent = Math.floor((job.chance || MISSION_BASE_SUCCESS) * 100);
+
+      appendOutput(`${idx}. ${label} job:`);
+      appendOutput(`   ${job.text}`);
+      appendOutput(`   Payout: ${job.reward} credits | Chance: ${chancePercent}%`);
+      appendOutput("");
+    }
+
+    function adjustBoardRewards(missions) {
+      // Ensure strict risk-reward ordering on the current job board:
+      // lower chance -> higher or equal payout, with the lowest chance
+      // always having the highest payout.
+      const indexed = missions.map((m, idx) => ({ idx, chance: m.chance || MISSION_BASE_SUCCESS }));
+
+      indexed.sort((a, b) => a.chance - b.chance);
+
+      // First (lowest chance) keeps its reward as baseline
+      let prevReward = missions[indexed[0].idx].reward;
+
+      for (let i = 1; i < indexed.length; i++) {
+        const mi = missions[indexed[i].idx];
+        if (mi.reward >= prevReward) {
+          // Strong clamp so higher-chance jobs sit clearly below
+          mi.reward = Math.max(Math.floor(prevReward * 0.8), 50);
+        }
+        prevReward = mi.reward;
+      }
+    }
+
+    function visitBar() {
+      const scene = barSceneCycle.next();
+      const opener = npcOpenerCycle.next();
+      appendOutput("\n" + scene);
+      appendOutput("");
+      appendOutput(opener);
+      appendOutput("");
+
+      const cargoJob = generateMission("cargo");
+      const passengerJob = generateMission("passenger");
+      const bountyJob = generateMission("bounty");
+      const miningJob = generateMission("mining");
+
+      game.pendingMissions = [cargoJob, passengerJob, bountyJob, miningJob];
+      game.pendingMission = null;
+
+      // Optional single guaranteed mission on this board (~3% of boards)
+      if (Math.random() < BOARD_GUARANTEED_RATE) {
+        const idx = randInt(0, game.pendingMissions.length - 1);
+        const gm = game.pendingMissions[idx];
+        gm.guaranteed = true;
+        gm.chance = 1.0;
+      }
+
+      // Enforce strong local risk–reward balance on the board
+      adjustBoardRewards(game.pendingMissions);
+
+      appendOutput("\n--- JOB BOARD ---");
+      describeJob(1, game.pendingMissions[0]);
+      describeJob(2, game.pendingMissions[1]);
+      describeJob(3, game.pendingMissions[2]);
+      describeJob(4, game.pendingMissions[3]);
+      appendOutput("5. Walk away");
+      game.mode = "barConfirm";
+    }
+
+    function showTravelOptions() {
+      const destinations = game.systems.filter(s => s !== game.player.location);
+      game.travelDestinations = destinations;
+      appendOutput("\n--- TRAVEL ---");
+      appendOutput("Available destinations:");
+      destinations.forEach((sys, idx) => {
+        appendOutput(`${idx + 1}. ${sys.name} - ${formatWealthLabel(sys.wealth)}`);
+      });
+      appendOutput("0. Cancel travel");
+      game.mode = "travel";
+    }
+
+    function doTravel(index) {
+      const lines = [];
+      const destinations = game.travelDestinations;
+      if (index < 0 || index >= destinations.length) return lines;
+      const destination = destinations[index];
+      const origin = game.player.location;
+
+      lines.push(`\nUndocking and burning for ${destination.name}...`);
+
+      let ambushProb = 0.18;
+
+      if (destination.wealth === "poor") {
+        ambushProb = 0.30;
+      } else if (destination.wealth === "average") {
+        ambushProb = 0.18;
+      } else if (destination.wealth === "rich") {
+        ambushProb = 0.10;         // still possible
+      }
+
+      // Pirates can hit while you travel
+      maybeTriggerPirates("lane", lines);
+
+      if (Math.random() < 0.30) {
+        const cbLine = cbCycle.next();
+        if (cbLine) {
+          lines.push("");
+          lines.push(`[Open Comms] ${cbLine}`);
+          lines.push("");
+        }
+      }
+
+      if (Math.random() < ambushProb) {
+        const loss = randInt(300, 900);
+        game.player.credits -= loss;
+        lines.push(`Ambushed along the lane. Patch-up and bribes cost ${loss} credits.`);
+      }
+
+      // Arrive
+      game.player.location = destination;
+      destination.market.generatePrices(destination.wealth);
+
+      // If traveling from a poor station to a rich station with cargo,
+      // bump the prices of items currently in hold by 15% at the rich market.
+      if (origin.wealth === "poor" && destination.wealth === "rich" && getTotalCargoUnits() > 0) {
+        const cargoNames = Object.keys(game.player.cargo).filter(
+          name => (game.player.cargo[name] || 0) > 0
+        );
+        cargoNames.forEach(name => {
+          if (destination.market.prices[name]) {
+            destination.market.prices[name] = Math.floor(destination.market.prices[name] * 1.15);
+          }
+        });
+      }
+
+      lines.push(`You drop back into realspace at ${destination.name}.`);
+
+      return lines;
+    }
+
+    // =========================================================
+    // TRADE HELPERS
+    // =========================================================
+
+    function commoditySellMultiplier(name) {
+      return TRADE_SELL_MULTIPLIER;
+    }
+
+    // =========================================================
+    // TRADE FLOW
+    // =========================================================
+
+    function showTradeHelp() {
+      const market = game.player.location.market;
+      appendOutput("\n--- MARKET ---");
+      appendOutput(`Location: ${game.player.location.name}`);
+      appendOutput(`Wealth: ${formatWealthLabel(game.player.location.wealth)}`);
+      appendOutput(`Credits: ${game.player.credits}`);
+      appendOutput(`Cargo hold: ${getTotalCargoUnits()}/${getCargoCapacity()} units`);
+      appendOutput("\nPrices:");
+      for (const [c, p] of Object.entries(market.prices)) {
+        appendOutput(`${c}: ${p}`);
+      }
+      appendOutput("");
+      appendOutput("Choose an option:");
+      appendOutput("1. Buy");
+      appendOutput("2. Sell");
+      appendOutput("3. Sell all cargo");
+      appendOutput("4. Return to main menu");
+      tradeState.phase = "root";
+      tradeState.action = null;
+      tradeState.list = [];
+      tradeState.commodity = null;
+      game.mode = "trade";
+    }
+
+    function enterBuyCommodityPhase() {
+      const market = game.player.location.market;
+      const list = CARGO_TYPES.filter(c => c in market.prices);
+      if (!list.length) {
+        appendOutput("No commodities available to buy here.");
+        showTradeHelp();
+        return;
+      }
+      tradeState.phase = "buy_commodity";
+      tradeState.action = "buy";
+      tradeState.list = list;
+      tradeState.commodity = null;
+
+      appendOutput("\n--- BUY ---");
+      appendOutput(`Cargo hold: ${getTotalCargoUnits()}/${getCargoCapacity()} units`);
+      appendOutput("Choose a commodity:");
+      list.forEach((cargo, idx) => {
+        const price = market.prices[cargo];
+        appendOutput(`${idx + 1}. ${cargo} - ${price} credits per unit`);
+      });
+      appendOutput("0. Return to market menu");
+    }
+
+    function enterSellCommodityPhase() {
+      const market = game.player.location.market;
+      const list = Object.keys(game.player.cargo).filter(
+        c => (game.player.cargo[c] || 0) > 0 && (c in market.prices)
+      );
+      if (!list.length) {
+        appendOutput("You have nothing to sell here.");
+        showTradeHelp();
+        return;
+      }
+      tradeState.phase = "sell_commodity";
+      tradeState.action = "sell";
+      tradeState.list = list;
+      tradeState.commodity = null;
+
+      appendOutput("\n--- SELL ---");
+      appendOutput(`Cargo hold: ${getTotalCargoUnits()}/${getCargoCapacity()} units`);
+      appendOutput("Choose a commodity:");
+      list.forEach((cargo, idx) => {
+        const sellPrice = Math.floor(market.prices[cargo] * commoditySellMultiplier(cargo));
+        appendOutput(`${idx + 1}. ${cargo} - ${sellPrice} credits per unit`);
+      });
+      appendOutput("0. Return to market menu");
+    }
+
+    function enterAmountPhase() {
+      const market = game.player.location.market;
+      const cargoName = tradeState.commodity;
+      const basePrice = market.prices[cargoName];
+
+      appendOutput("");
+      if (tradeState.action === "buy") {
+        const canAfford = basePrice > 0 ? Math.floor(game.player.credits / basePrice) : 0;
+        const canFit = getAvailableCargoSpace();
+        const maxBuy = Math.max(0, Math.min(canAfford, canFit));
+        appendOutput(`Buying ${cargoName} at ${basePrice} credits per unit.`);
+        appendOutput(`You can afford up to ${canAfford}. Cargo space available: ${canFit}.`);
+        appendOutput(`Max you can buy right now: ${maxBuy}.`);
+        appendOutput("Enter amount to buy. 0 to cancel.");
+      } else {
+        const have = game.player.cargo[cargoName] || 0;
+        const sellPrice = Math.floor(basePrice * commoditySellMultiplier(cargoName));
+        appendOutput(`Selling ${cargoName} at ${sellPrice} credits per unit. You have ${have}.`);
+        appendOutput("Enter amount to sell. 0 to cancel.");
+      }
+
+      tradeState.phase = "amount";
+    }
+
+    function sellAllCargo() {
+      const market = game.player.location.market;
+      const entries = Object.entries(game.player.cargo).filter(
+        ([name, qty]) => qty > 0 && (name in market.prices)
+      );
+
+      if (!entries.length) {
+        appendOutput("You have no cargo to sell here.");
+        return;
+      }
+
+      let total = 0;
+      appendOutput("");
+      appendOutput("You sell everything the market here will take:");
+      for (const [name, qty] of entries) {
+        const basePrice = market.prices[name];
+        const sellPrice = Math.floor(basePrice * commoditySellMultiplier(name));
+        const revenue = sellPrice * qty;
+        total += revenue;
+        appendOutput(`  ${qty} x ${name} for ${revenue} credits total.`);
+        delete game.player.cargo[name];
+      }
+      game.player.credits += total;
+      appendOutput(`Total revenue: ${total} credits.`);
+    }
+
+    function handleTradeCommand(raw) {
+      const cmd = raw.trim();
+      if (!cmd) return;
+      const lower = cmd.toLowerCase();
+
+      switch (tradeState.phase) {
+        case "root": {
+          if (lower === "1") {
+            enterBuyCommodityPhase();
+          } else if (lower === "2") {
+            enterSellCommodityPhase();
+          } else if (lower === "3") {
+            sellAllCargo();
+            showTradeHelp();
+          } else if (lower === "4") {
+            enterMainLoopTurn();
+          } else {
+            appendOutput("Enter 1 to buy, 2 to sell, 3 to sell all, or 4 to return to main menu.");
+          }
+          break;
+        }
+
+        case "buy_commodity":
+        case "sell_commodity": {
+          const idx = parseInt(cmd, 10);
+          if (Number.isNaN(idx) || idx < 0) {
+            appendOutput("Enter a number from the list.");
+            return;
+          }
+          if (idx === 0) {
+            showTradeHelp();
+            return;
+          }
+          if (idx < 1 || idx > tradeState.list.length) {
+            appendOutput("Enter a number from the list.");
+            return;
+          }
+          tradeState.commodity = tradeState.list[idx - 1];
+          enterAmountPhase();
+          break;
+        }
+
+        case "amount": {
+          const amt = parseInt(cmd, 10);
+          if (Number.isNaN(amt) || amt < 0) {
+            appendOutput("Enter a non-negative number.");
+            return;
+          }
+          if (amt === 0) {
+            showTradeHelp();
+            return;
+          }
+
+          const cargoName = tradeState.commodity;
+          const market = game.player.location.market;
+          const basePrice = market.prices[cargoName];
+
+          if (tradeState.action === "buy") {
+            const canAfford = basePrice > 0 ? Math.floor(game.player.credits / basePrice) : 0;
+            const canFit = getAvailableCargoSpace();
+            const maxBuy = Math.max(0, Math.min(canAfford, canFit));
+
+            if (maxBuy <= 0) {
+              appendOutput("You can't buy any: either you're broke or your hold is full.");
+              showTradeHelp();
+              return;
+            }
+
+            const buyAmt = Math.min(amt, maxBuy);
+            const cost = basePrice * buyAmt;
+
+            if (buyAmt < amt) {
+              appendOutput(`Hold/credits limit you to ${buyAmt} units. Buying that instead.`);
+            }
+
+            game.player.credits -= cost;
+            const added = addCargo(cargoName, buyAmt);
+            if (added !== buyAmt) {
+              const refundUnits = buyAmt - added;
+              if (refundUnits > 0) {
+                game.player.credits += refundUnits * basePrice;
+              }
+              appendOutput("Something doesn't fit. Purchase adjusted to your remaining cargo space.");
+            } else {
+              appendOutput(`You buy ${buyAmt} units of ${cargoName}.`);
+            }
+
+          } else if (tradeState.action === "sell") {
+            const have = game.player.cargo[cargoName] || 0;
+            if (have >= amt) {
+              const remaining = have - amt;
+              if (remaining > 0) {
+                game.player.cargo[cargoName] = remaining;
+              } else {
+                delete game.player.cargo[cargoName];
+              }
+              const sellPrice = Math.floor(basePrice * commoditySellMultiplier(cargoName));
+              const revenue = sellPrice * amt;
+              game.player.credits += revenue;
+              appendOutput(`You sell ${amt} units of ${cargoName}.`);
+            } else {
+              appendOutput("You don't have that much.");
+            }
+          }
+
+          tradeState.phase = null;
+          tradeState.action = null;
+          tradeState.list = [];
+          tradeState.commodity = null;
+          showTradeHelp();
+          break;
+        }
+
+        default: {
+          showTradeHelp();
+          break;
+        }
+      }
+    }
+
+    // // =========================================================
+// SPACEJACK (SIMPLIFIED BLACKJACK, 50% WIN RATE)
+// =========================================================
+
+function spacejackCardFromValue(v) {
+  if (v === 11) return { rank: "A", value: 11 };
+  if (v === 10) return { rank: choice(["10", "J", "Q", "K"]), value: 10 };
+  return { rank: String(v), value: v };
+}
+
+function spacejackHandTotal(hand) {
+  let total = 0;
+  let aces = 0;
+  for (const c of hand) {
+    total += c.value;
+    if (c.rank === "A") aces += 1;
+  }
+  while (total > 21 && aces > 0) {
+    total -= 10;
+    aces -= 1;
+  }
+  return total;
+}
+
+function spacejackHandString(hand) {
+  return hand.map(c => c.rank).join(" ");
+}
+
+function spacejackMakeTwoCardHand(minTotal, maxTotal, disallow21 = true) {
+  for (let tries = 0; tries < 500; tries++) {
+    const v1 = randInt(2, 11);
+    const v2 = randInt(2, 11);
+    const hand = [spacejackCardFromValue(v1), spacejackCardFromValue(v2)];
+    const t = spacejackHandTotal(hand);
+    if (t < minTotal || t > maxTotal) continue;
+    if (disallow21 && t === 21) continue;
+    return hand;
+  }
+  return [spacejackCardFromValue(10), spacejackCardFromValue(7)];
+}
+
+function spacejackRiggedPlayerHitCard(currentTotal, rigOutcome) {
+  if (rigOutcome === "win") {
+    const options = [];
+    for (let v = 2; v <= 11; v++) {
+      const newTotal = currentTotal + v;
+      if (newTotal <= 21) options.push(v);
+    }
+    if (!options.length) return spacejackCardFromValue(2);
+
+    options.sort((a, b) => a - b);
+    let pick;
+    if (currentTotal <= 11) {
+      pick = options[Math.min(options.length - 1, randInt(Math.floor(options.length / 2), options.length - 1))];
+    } else if (currentTotal <= 16) {
+      pick = options[randInt(0, options.length - 1)];
+    } else {
+      pick = options[randInt(0, Math.min(options.length - 1, 2))];
+    }
+    return spacejackCardFromValue(pick);
+  }
+
+  // rigOutcome === "lose"
+  const bustLikelihood = currentTotal >= 16 ? 0.65 : (currentTotal >= 13 ? 0.35 : 0.15);
+
+  if (Math.random() < bustLikelihood) {
+    const bustOptions = [];
+    for (let v = 2; v <= 11; v++) {
+      if (currentTotal + v > 21) bustOptions.push(v);
+    }
+    if (bustOptions.length) return spacejackCardFromValue(choice(bustOptions));
+  }
+
+  const safeOptions = [];
+  for (let v = 2; v <= 11; v++) {
+    const newTotal = currentTotal + v;
+    if (newTotal <= 20) safeOptions.push(v);
+  }
+  if (!safeOptions.length) {
+    const bustOptions = [];
+    for (let v = 2; v <= 11; v++) {
+      if (currentTotal + v > 21) bustOptions.push(v);
+    }
+    return spacejackCardFromValue(bustOptions.length ? choice(bustOptions) : 11);
+  }
+
+  safeOptions.sort((a, b) => a - b);
+  let pick;
+  if (currentTotal <= 12) {
+    pick = safeOptions[randInt(Math.floor(safeOptions.length / 2), safeOptions.length - 1)];
+  } else {
+    pick = safeOptions[randInt(0, safeOptions.length - 1)];
+  }
+  return spacejackCardFromValue(pick);
+}
+
+function spacejackFindSeqToTarget(start, target, depthLimit = 6) {
+  const values = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+  function dfs(sum, depth, path) {
+    if (sum === target) return path;
+    if (depth >= depthLimit) return null;
+    if (sum > target) return null;
+
+    if (sum >= 17 && sum !== target) return null;
+
+    const shuffled = values.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    for (const v of shuffled) {
+      const next = sum + v;
+      if (next > target) continue;
+      if (next >= 17 && next !== target) continue;
+
+      const res = dfs(next, depth + 1, path.concat([v]));
+      if (res) return res;
+    }
+    return null;
+  }
+
+  return dfs(start, 0, []);
+}
+
+function spacejackBuildDealerHand(upCard, playerTotal, rigOutcome) {
+  // const upValue = upCard.value; // unused but harmless if you keep it
+
+  let targetType = "target";
+  let targetTotal = null;
+
+  if (rigOutcome === "win") {
+    if (playerTotal <= 17) {
+      targetType = "bust";
+    } else {
+      targetType = "target";
+      targetTotal = randInt(17, playerTotal - 1);
+    }
+  } else {
+    targetType = "target";
+    const min = Math.max(17, playerTotal + 1);
+    targetTotal = randInt(min, 21);
+  }
+
+  for (let tries = 0; tries < 600; tries++) {
+    const hand = [upCard];
+
+    const downValue = randInt(2, 11);
+    hand.push(spacejackCardFromValue(downValue));
+
+    let total = spacejackHandTotal(hand);
+
+    if (targetType === "bust") {
+      while (total < SPACEJACK_DEALER_STAND) {
+        const v = randInt(2, 11);
+        hand.push(spacejackCardFromValue(v));
+        total = spacejackHandTotal(hand);
+      }
+      if (total <= 21) {
+        const bustOptions = [];
+        for (let v = 2; v <= 11; v++) {
+          if (total + v > 21) bustOptions.push(v);
+        }
+        const v = bustOptions.length ? choice(bustOptions) : 11;
+        hand.push(spacejackCardFromValue(v));
+        total = spacejackHandTotal(hand);
+      }
+      if (total > 21) {
+        return { hand, dealerTotal: total };
+      }
+      continue;
+    }
+
+    if (targetTotal == null) continue;
+    if (total > targetTotal) continue;
+
+    if (total === targetTotal) {
+      if (total >= SPACEJACK_DEALER_STAND) return { hand, dealerTotal: total };
+      continue;
+    }
+
+    if (total >= SPACEJACK_DEALER_STAND) continue;
+
+    const seq = spacejackFindSeqToTarget(total, targetTotal, 6);
+    if (!seq) continue;
+
+    for (const v of seq) {
+      hand.push(spacejackCardFromValue(v));
+      total = spacejackHandTotal(hand);
+    }
+
+    if (total === targetTotal && total >= SPACEJACK_DEALER_STAND) {
+      return { hand, dealerTotal: total };
+    }
+  }
+
+  // Fallback: make dealer bust (safe to avoid "no resolution")
+  const fallbackHand = [upCard, spacejackCardFromValue(10), spacejackCardFromValue(10)];
+  return { hand: fallbackHand, dealerTotal: spacejackHandTotal(fallbackHand) };
+}
+
+function startSpacejack() {
+  if (game.player.credits < SPACEJACK_BET) {
+    const lines = [];
+    lines.push("");
+    lines.push(`You need ${SPACEJACK_BET} credits to play Spacejack.`);
+    enterMainLoopTurn(lines);
+    return;
+  }
+
+  // Deduct bet up front
+  game.player.credits -= SPACEJACK_BET;
+
+  // Decide outcome FIRST: exact 50/50 in the long run.
+  const rigOutcome = (Math.random() < 0.5) ? "win" : "lose";
+
+  // Avoid instant naturals; keep it consistent and fast.
+  const playerHand = spacejackMakeTwoCardHand(12, 19, true);
+
+  // Dealer shows one card; the rest is built on stand.
+  const dealerUp = spacejackCardFromValue(randInt(2, 11));
+
+  game.spacejack = {
+    bet: SPACEJACK_BET,
+    rigOutcome,
+    playerHand,
+    dealerUp,
+    finished: false
+  };
+
+  appendOutput("");
+  appendOutput("--- SPACEJACK ---");
+  appendOutput(`Bet: ${SPACEJACK_BET} credits`);
+  appendOutput(`Winnings on a win: +${SPACEJACK_WINNINGS} credits (net profit)`);
+  appendOutput(`Total returned on a win: +${SPACEJACK_BET + SPACEJACK_WINNINGS} credits`);
+  appendOutput("Rules: hit or stand. Dealer stands on 17. Aces count as 1 or 11.");
+  appendOutput("");
+  appendOutput("Choose:");
+  appendOutput("1. Hit");
+  appendOutput("2. Stand");
+  appendOutput("");
+  appendOutput(`Your hand: ${spacejackHandString(playerHand)} (total ${spacejackHandTotal(playerHand)})`);
+  appendOutput(`Dealer shows: ${dealerUp.rank} (?)`);
+
+  game.mode = "spacejack";
+}
+
+function settleSpacejackWin(lines, bet) {
+  // Bet was already deducted when the game started.
+  // On win: return stake + winnings => net profit = SPACEJACK_WINNINGS.
+  const payout = bet + SPACEJACK_WINNINGS;
+  game.player.credits += payout;
+  lines.push(`You win. Winnings: +${SPACEJACK_WINNINGS} credits.`);
+  lines.push(`Paid out: +${payout} credits total (stake + winnings).`);
+}
+
+function settleSpacejackLose(lines) {
+  lines.push("You lose.");
+}
+
+function resolveSpacejackDealerAndSettle() {
+  const lines = [];
+  const sj = game.spacejack;
+  if (!sj) return lines;
+
+  const bet = sj.bet;
+  const playerTotal = spacejackHandTotal(sj.playerHand);
+
+  const built = spacejackBuildDealerHand(sj.dealerUp, playerTotal, sj.rigOutcome);
+  const dealerHand = built.hand;
+  const dealerTotal = built.dealerTotal;
+
+  lines.push("");
+  lines.push(`Dealer reveals: ${spacejackHandString(dealerHand)} (total ${dealerTotal})`);
+
+  if (playerTotal > 21) {
+    lines.push("You bust.");
+    settleSpacejackLose(lines);
+  } else if (dealerTotal > 21) {
+    lines.push("Dealer busts.");
+    settleSpacejackWin(lines, bet);
+  } else if (playerTotal > dealerTotal) {
+    settleSpacejackWin(lines, bet);
+  } else {
+    // We shape the dealer to avoid ties; this catches all losses cleanly.
+    settleSpacejackLose(lines);
+  }
+
+  sj.finished = true;
+  game.spacejack = null;
+  return lines;
+}
+
+function handleSpacejackCommand(raw) {
+  const cmd = raw.trim().toLowerCase();
+  const sj = game.spacejack;
+  if (!sj) {
+    enterMainLoopTurn();
+    return;
+  }
+
+  if (cmd === "1") {
+    const currentTotal = spacejackHandTotal(sj.playerHand);
+    const c = spacejackRiggedPlayerHitCard(currentTotal, sj.rigOutcome);
+    sj.playerHand.push(c);
+
+    const pTot = spacejackHandTotal(sj.playerHand);
+
+    appendOutput("");
+    appendOutput(`You hit: ${c.rank}`);
+    appendOutput(`Your hand: ${spacejackHandString(sj.playerHand)} (total ${pTot})`);
+
+    if (pTot > 21) {
+      const lines = [];
+      lines.push("");
+      lines.push("You bust.");
+      settleSpacejackLose(lines);
+      sj.finished = true;
+      game.spacejack = null;
+      enterMainLoopTurn(lines);
+      return;
+    }
+
+    appendOutput("");
+    appendOutput("Choose:");
+    appendOutput("1. Hit");
+    appendOutput("2. Stand");
+    return;
+  }
+
+  if (cmd === "2") {
+    const lines = resolveSpacejackDealerAndSettle();
+    enterMainLoopTurn(lines);
+    return;
+  }
+
+  appendOutput("Enter 1 to hit or 2 to stand.");
+}
+
+    // =========================================================
+    // SHIPYARD / DEBT
+    // =========================================================
+
+    function showShipyard() {
+      const p = game.player;
+      const tierLabel = (t) => (t && t > 0 ? `Tier ${t}` : "None");
+
+      const combatCost = getUpgradeCost("combat_laser");
+      const miningCost = getUpgradeCost("mining_laser");
+      const smugglerCost = getUpgradeCost("smuggler_hold");
+      const luxuryCost = getUpgradeCost("luxury_cabin");
+
+      appendOutput("\n--- OUTFITTER ---");
+      appendOutput(`Credits: ${p.credits}`);
+      appendOutput(`Cargo capacity: ${getTotalCargoUnits()}/${getCargoCapacity()} units`);
+      appendOutput("\nCombat slot - choose one path (max tier 3, affects chance only):");
+      appendOutput(`  Combat rig (bounties): ${tierLabel(p.ship.combat_laser)}`);
+      appendOutput(`  Mining rig (mining):   ${tierLabel(p.ship.mining_laser)}`);
+      appendOutput("\nCargo slot - choose one path (max tier 3):");
+      appendOutput(`  Smuggler hold (cargo missions + capacity): ${tierLabel(p.ship.smuggler_hold)} (capacity +${(p.ship.smuggler_hold || 0) * SMUGGLER_HOLD_CAPACITY_PER_TIER})`);
+      appendOutput(`  Luxury cabin (passengers):                 ${tierLabel(p.ship.luxury_cabin)}`);
+      appendOutput("\nChoose an option (each tier costs ~75% more than the last):");
+      appendOutput(`1. Upgrade combat rig (+10% bounty mission success chance) - ${combatCost !== null ? combatCost : "MAXED"}`);
+      appendOutput(`2. Upgrade mining rig (+10% mining mission & mining action success chance) - ${miningCost !== null ? miningCost : "MAXED"}`);
+      appendOutput(`3. Upgrade smuggler hold (+10% cargo mission success chance; +${SMUGGLER_HOLD_CAPACITY_PER_TIER} capacity per tier) - ${smugglerCost !== null ? smugglerCost : "MAXED"}`);
+      appendOutput(`4. Upgrade luxury cabin (+10% passenger mission success chance) - ${luxuryCost !== null ? luxuryCost : "MAXED"}`);
+      appendOutput("5. Leave shipyard");
+      game.mode = "shipyard";
+    }
+
+    function showPayDebtPrompt() {
+      appendOutput("\n--- DEBT PAYMENT ---");
+      appendOutput(`Current debt: ${game.player.debt}`);
+      appendOutput("Enter amount to pay toward debt (0 to cancel).");
+      game.mode = "payDebt";
+    }
+
+    // =========================================================
+    // SAVE / LOAD
+    // =========================================================
+
+    const SAVE_KEY = "space_trucker_save_v1";
+
+    function saveGame() {
+      try {
+        const data = {
+          player: {
+            credits: game.player.credits,
+            debt: game.player.debt,
+            cargo: game.player.cargo,
+            locationName: game.player.location.name,
+            ship: game.player.ship
+          },
+          systems: game.systems.map(s => ({
+            name: s.name,
+            wealth: s.wealth,
+            prices: s.market.prices
+          })),
+          flags: {
+            debtCleared: !!(game.flags && game.flags.debtCleared),
+            debtClearedNotified: !!(game.flags && game.flags.debtClearedNotified)
+          },
+          cycles: {
+            barScene: barSceneCycle.getState(),
+            npcOpener: npcOpenerCycle.getState(),
+            failure: failureTextCycle.getState(),
+            cb: cbCycle.getState()
+          }
+        };
+        localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+        appendOutput("Game saved to browser storage.");
+      } catch (e) {
+        appendOutput("Save failed: " + e.message);
+      }
+    }
+
+    function loadGameSaved() {
+      try {
+        const raw = localStorage.getItem(SAVE_KEY);
+        if (!raw) {
+          appendOutput("No saved game found in this browser.");
+          return;
+        }
+        const data = JSON.parse(raw);
+
+        game.systems = (data.systems || []).map(info => {
+          const s = new GameSystem(info.name);
+          s.wealth = info.wealth;
+          s.market.prices = info.prices || {};
+          return s;
+        });
+        if (!game.systems.length) {
+          appendOutput("Save file corrupted or empty.");
+          return;
+        }
+        const locName = data.player && data.player.locationName;
+        const locSys = game.systems.find(s => s.name === locName) || game.systems[0];
+
+        const p = new Player(locSys);
+        if (data.player) {
+          p.credits = data.player.credits ?? STARTING_CREDITS;
+          p.debt = data.player.debt ?? STARTING_DEBT;
+          p.cargo = data.player.cargo || {};
+          const rawShip = data.player.ship || {};
+          const newShip = {
+            combat_laser: 0,
+            mining_laser: 0,
+            smuggler_hold: 0,
+            luxury_cabin: 0
+          };
+          for (const key of Object.keys(newShip)) {
+            if (typeof rawShip[key] === "number") {
+              newShip[key] = Math.max(0, Math.min(3, rawShip[key] | 0));
+            } else if (typeof rawShip[key] === "boolean") {
+              newShip[key] = rawShip[key] ? 1 : 0;
+            }
+          }
+          p.ship = newShip;
+        }
+        game.player = p;
+
+        // Load flags safely
+        game.flags = game.flags || { debtCleared: false, debtClearedNotified: false };
+        if (data.flags) {
+          game.flags.debtCleared = !!data.flags.debtCleared || (p.debt <= 0);
+          game.flags.debtClearedNotified = !!data.flags.debtClearedNotified;
+        } else {
+          game.flags.debtCleared = (p.debt <= 0);
+          game.flags.debtClearedNotified = false;
+        }
+
+        // Enforce cargo capacity on load (in case older save exceeded it)
+        const cap = getCargoCapacity();
+        const total = getTotalCargoUnits();
+        if (total > cap) {
+          const entries = Object.entries(game.player.cargo).filter(([, v]) => (v || 0) > 0);
+          entries.sort((a, b) => (b[1] || 0) - (a[1] || 0));
+
+          let over = total - cap;
+          for (const [name, qty] of entries) {
+            if (over <= 0) break;
+            const take = Math.min(qty, over);
+            const newQty = qty - take;
+            if (newQty > 0) game.player.cargo[name] = newQty;
+            else delete game.player.cargo[name];
+            over -= take;
+          }
+        }
+
+        if (data.cycles) {
+          barSceneCycle.loadState(data.cycles.barScene);
+          npcOpenerCycle.loadState(data.cycles.npcOpener);
+          failureTextCycle.loadState(data.cycles.failure);
+          cbCycle.loadState(data.cycles.cb);
+        }
+
+        game.mode = "init";
+        game.spacejack = null;
+        appendOutput("Game loaded from browser storage.");
+        enterMainLoopTurn();
+      } catch (e) {
+        appendOutput("Load failed: " + e.message);
+      }
+    }
+
+    // =========================================================
+    // NEW GAME INIT
+    // =========================================================
+
+    function initNewGame() {
+      clearOutput();
+      game.systems = SYSTEM_NAMES.map(name => new GameSystem(name));
+      const starting = choice(game.systems);
+      game.player = new Player(starting);
+      game.mode = "init";
+      game.flags = {
+        debtCleared: false,
+        debtClearedNotified: false
+      };
+      game.spacejack = null;
+
+      appendOutput("DIRT POOR IN DEEP SPACE");
+      appendOutput("");
+      appendOutput("Welcome to Graveyard Orbit.");
+      appendOutput("");
+      appendOutput("After a loan from a real friendly banker, you owe more than your life is worth. There's plenty of honest work out here, but you won't be doing most of it. Your ship is capable even if it is a little rusty. Take jobs, mine asteroids, move cargo and buy upgrades. One day maybe you can make it out alive...");
+      enterMainLoopTurn();
+    }
+
+    // =========================================================
+    // COMMAND HANDLING
+    // =========================================================
+
+    function processCommand(raw) {
+      const cmd = raw.trim();
+      if (!cmd) return;
+
+      const lower = cmd.toLowerCase();
+      if (lower === "save") {
+        saveGame();
+        return;
+      }
+      if (lower === "load") {
+        loadGameSaved();
+        return;
+      }
+      if (lower === "new") {
+        initNewGame();
+        return;
+      }
+
+      if (game.mode === "gameOver") {
+        if (lower === "load") {
+          loadGameSaved();
+        } else if (lower === "new") {
+          initNewGame();
+        } else {
+          appendOutput("Type 'new' to start over or 'load' to resume a saved run.");
+        }
+        return;
+      }
+
+      switch (game.mode) {
+        case "mainMenu":
+          handleMainMenuCommand(lower);
+          break;
+        case "trade":
+          handleTradeCommand(cmd);
+          break;
+        case "travel":
+          handleTravelCommand(lower);
+          break;
+        case "barConfirm":
+          handleBarConfirm(lower);
+          break;
+        case "shipyard":
+          handleShipyardCommand(lower);
+          break;
+        case "payDebt":
+          handlePayDebtCommand(lower);
+          break;
+        case "spacejack":
+          handleSpacejackCommand(cmd);
+          break;
+        default:
+          enterMainLoopTurn();
+          break;
+      }
+    }
+
+    function handleTravelCommand(cmd) {
+      const idx = parseInt(cmd, 10);
+      if (Number.isNaN(idx) || idx < 0) {
+        appendOutput("Enter a number from the list.");
+        return;
+      }
+      if (idx === 0) {
+        enterMainLoopTurn();
+        return;
+      }
+      const index = idx - 1;
+      if (index < 0 || index >= game.travelDestinations.length) {
+        appendOutput("Enter a number from the list.");
+        return;
+      }
+      const lines = doTravel(index);
+      enterMainLoopTurn(lines);
+    }
+
+    function handleBarConfirm(cmd) {
+      if (!game.pendingMissions || !game.pendingMissions.length) {
+        enterMainLoopTurn();
+        return;
+      }
+
+      const choiceNum = parseInt(cmd, 10);
+      if (Number.isNaN(choiceNum) || choiceNum < 1 || choiceNum > 5) {
+        appendOutput("Enter a number from the list.");
+        return;
+      }
+
+      if (choiceNum === 5) {
+        appendOutput("You let the offers drift by. Plenty more trouble in the lanes.");
+        game.pendingMissions = [];
+        game.pendingMission = null;
+        enterMainLoopTurn();
+      } else {
+        if (choiceNum < 1 || choiceNum > game.pendingMissions.length) {
+          appendOutput("Enter a number from the list.");
+          return;
+        }
+
+        const mission = game.pendingMissions[choiceNum - 1];
+        const travelLines = travelToDestination(mission);
+        const missionLines = resolveMission(mission);
+        const allLines = [...travelLines, ...missionLines];
+
+        game.pendingMissions = [];
+        game.pendingMission = null;
+
+        enterMainLoopTurn(allLines);
+      }
+    }
+
+    function handleMainMenuCommand(cmd) {
+      if (cmd === "1") {
+        visitBar();
+      } else if (cmd === "2") {
+        showTradeHelp();
+      } else if (cmd === "3") {
+        showTravelOptions();
+      } else if (cmd === "4") {
+        const lines = mine();
+        enterMainLoopTurn(lines);
+      } else if (cmd === "5") {
+        showPayDebtPrompt();
+      } else if (cmd === "6") {
+        showShipyard();
+      } else if (cmd === "7") {
+        startSpacejack();
+      } else if (cmd === "8") {
+        saveGame();
+      } else if (cmd === "9") {
+        loadGameSaved();
+      } else if (cmd === "10") {
+        appendOutput("You power down the drives and let the dark close in.");
+        fadeOutAndStopMusic(() => {
+          bgmStarted = false;
+          bgmFadedIn = false;
+        });
+        game.mode = "gameOver";
+        appendOutput("Session ended. Type 'new' to start a fresh run, or 'load' to resume a save.");
+      } else {
+        appendOutput("Invalid choice.");
+      }
+    }
+
+    function handleShipyardCommand(cmd) {
+      if (cmd === "1") {
+        installUpgrade("combat_laser", "Combat rig", "mining_laser", "Mining rig");
+        showShipyard();
+      } else if (cmd === "2") {
+        installUpgrade("mining_laser", "Mining rig", "combat_laser", "Combat rig");
+        showShipyard();
+      } else if (cmd === "3") {
+        installUpgrade("smuggler_hold", "Smuggler hold", "luxury_cabin", "Luxury cabin");
+        showShipyard();
+      } else if (cmd === "4") {
+        installUpgrade("luxury_cabin", "Luxury cabin", "smuggler_hold", "Smuggler hold");
+        showShipyard();
+      } else if (cmd === "5") {
+        enterMainLoopTurn();
+      } else {
+        appendOutput("Invalid choice.");
+      }
+    }
+
+    function handlePayDebtCommand(cmd) {
+      const amt = parseInt(cmd, 10);
+      if (Number.isNaN(amt) || amt < 0) {
+        appendOutput("Enter a non-negative number.");
+        return;
+      }
+      if (amt === 0) {
+        enterMainLoopTurn();
+        return;
+      }
+      if (amt <= game.player.credits) {
+        const lines = [];
+        game.player.credits -= amt;
+        game.player.debt -= amt;
+        appendOutput("Debt payment processed.");
+
+        handleDebtClearedIfNeeded(lines);
+        enterMainLoopTurn(lines);
+      } else {
+        appendOutput("Insufficient funds.");
+        enterMainLoopTurn();
+      }
+    }
+
+    // =========================================================
+    // WIRE INPUT & START
+    // =========================================================
+
+    commandEl.addEventListener("focus", () => {
+      setTimeout(() => {
+        commandEl.scrollIntoView({ block: "center", behavior: "smooth" });
+        outputEl.scrollTop = outputEl.scrollHeight;
+      }, 300);
+    });
+
+    commandEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        autoScrollEnabled = true;
+        ensureMusicPlaying();
+        const value = commandEl.value;
+        commandEl.value = "";
+        processCommand(value);
+      }
+    });
+
+    initNewGame();
+  </script>
+</body>
+</html>
