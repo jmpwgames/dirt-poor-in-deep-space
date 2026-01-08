@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <!-- Mobile-friendly viewport; avoid over-constraining scaling -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dirt Poor in Deep Space v1b</title>
+  <title>Dirt Poor in Deep Space v3b</title>
   <style>
     :root {
       /* Easy knob for global scaling on mobile */
@@ -202,6 +202,14 @@
       "Medical Supplies", "Weapons", "AI Cores"
     ];
 
+    const MOON_SUGAR = "Moon Sugar";
+    const MOON_SUGAR_POOR_PRICE = 250;
+    const MOON_SUGAR_OTHER_PRICE = Math.floor(MOON_SUGAR_POOR_PRICE * 1.4); // guaranteed +40% profit
+
+    const MOON_SUGAR_BUST_CHANCE_ON_ARRIVAL = 0.50;
+    const MOON_SUGAR_DETENTION_DAYS = 3;
+    const MOON_SUGAR_FINE = 1000;
+
     const PASSENGER_TYPES = [
       "Scientist", "Refugee", "Corporate Agent", "Smuggler", "Tourist",
       "Diplomat", "Mercenary", "Religious Pilgrim", "Prospector", "Colonist",
@@ -240,6 +248,23 @@
     // =========================================================
 
     const CREDIT_MULTIPLIER = 2.2;
+
+    // Mission payout tuning knobs (applied after risk-reward scaling, before the global CREDIT_MULTIPLIER)
+    // Set to 1.0 for no change.
+    const MISSION_PAYOUT_MULT = {
+      cargo: 1.0,
+      passenger: 1.75,
+      bounty: 2,
+      mining: 1.0
+    };
+
+    function missionPayoutMultiplier(type) {
+      const v = MISSION_PAYOUT_MULT && Object.prototype.hasOwnProperty.call(MISSION_PAYOUT_MULT, type)
+        ? MISSION_PAYOUT_MULT[type]
+        : 1.0;
+      return (typeof v === "number" && Number.isFinite(v) && v > 0) ? v : 1.0;
+    }
+
     const TRADE_SELL_MULTIPLIER = 1.0; // sell at the advertised buy price
     const INTEREST_RATE = 0.025; // 2%
 
@@ -256,6 +281,67 @@
     // Fixed chance for every off-base interaction (travel, mission, mining).
     // No wealth/cargo/credits modifiers.
     const PIRACY_FIXED_RATE = 0.25; // 25%
+
+    // =========================================================
+    // ARRIVAL GREETINGS (WEALTH-AWARE, COUNTRY TWANG)
+    // =========================================================
+
+    const ARRIVAL_OPENERS = {
+      poor: ["roll up on", "drift in to", "ease in to", "limp in to", "slide in to"],
+      average: ["drop into", "coast into", "set down at", "roll in to", "pull in to"],
+      rich: ["glide into", "slip in to", "arrive at", "dock up at", "ease in to"]
+    };
+
+    const ARRIVAL_DETAILS = {
+      poor: {
+        sights: [
+          "dock lights flicker like a tired porch bulb",
+          "weld seams shine under cheap floodlamps",
+          "half the signage is hand-painted and the other half is peeled clean",
+          "somebody's patched the hull plating with whatever they had handy",
+          "a busted tug drone limps past like it owes money"
+        ],
+        sounds: [
+          "the radio crackles like it ain't been loved in years",
+          "you hear laughter, then coughing, then more laughter",
+          "a dispatcher drawls slow as molasses",
+          "somebody's music leaks through the bulkheads—off key and proud",
+          "tools clatter like a rainstorm in a tin shed"
+        ]
+      },
+      average: {
+        sights: [
+          "freight lanes are busy and the dock crews look half-awake",
+          "cargo skiffs run steady like clockwork",
+          "the market boards update one pixel at a time",
+          "the customs line moves just fast enough to keep folks from cussin'",
+          "traffic control runs it plain and honest"
+        ],
+        sounds: [
+          "the comms are all business and no poetry",
+          "a bored controller reads out docking numbers like a bedtime story",
+          "you catch a weather report nobody asked for",
+          "a mechanic hollers at a rookie over open channel",
+          "everybody talks like they're behind schedule"
+        ]
+      },
+      rich: {
+        sights: [
+          "polished plating throws your headlights right back at you",
+          "dockhands stand straight and smile like it's in the contract",
+          "security cams track you smooth as a hawk",
+          "the neon's clean and the floors look too new to be real",
+          "even the vacuum out here feels expensive"
+        ],
+        sounds: [
+          "comms are crisp and quiet, like folks got money to lose",
+          "a greeter voice says 'howdy' like it means 'don't cause trouble'",
+          "the station hum is so clean it near on feels judgmental",
+          "a clerk reminds you of the rules—politely, but sharp",
+          "nobody raises their voice, but everybody hears everything"
+        ]
+      }
+    };
 
     // Mining free-action success tuning
     const MINING_BASE_SUCCESS = 0.6;
@@ -276,8 +362,8 @@
     // Chance that any job board will contain exactly one 100% mission
     const BOARD_GUARANTEED_RATE = 0.03;  // ~3% of boards, <5% globally
 
-    const STARTING_CREDITS = 200;
-    const STARTING_DEBT = 20000;
+    const STARTING_CREDITS = 250;
+    const STARTING_DEBT = 25000;
 
     // =========================================================
     // FLAVOR TEXT (TRIMMED)
@@ -329,6 +415,116 @@
       `Breaker, Longhaul Jack here—if you see my trailer drifting, she ain't stolen, she's just lazy.`,
       `Lowcountry Lark checkin' in—stars look good, schedule looks bad.`
     ];
+
+    // =========================================================
+    // INTRO (PROCEDURAL)
+    // Always includes: what you can do + exact starting debt.
+    // =========================================================
+
+    const INTRO_TITLE_LINES = [
+      "DIRT POOR IN DEEP SPACE",
+      "DIRT POOR IN DEEP SPACE",
+      "DIRT POOR IN DEEP SPACE"
+    ];
+
+    const INTRO_WELCOME_LINES = [
+      "Welcome to Graveyard Orbit.",
+      "Welcome to Graveyard Orbit—where the welds are tired and the bills ain't.",
+      "Welcome to Graveyard Orbit. Try not to scrape the paint—if you even got any left.",
+      "Welcome to Graveyard Orbit. Keep your comms polite and your pockets lighter than your debt.",
+      "Welcome to Graveyard Orbit, partner. Out here, the stars don't spot you nothin'."
+    ];
+
+    const INTRO_ORBIT_SCENES = [
+      "Dock lights blink like old Christmas bulbs and half the station smells like burnt coolant.",
+      "The lane traffic is a slow parade of busted haulers and shiny ships that don't wave back.",
+      "Your scopes show scrap fields, tired beacons, and a whole lotta empty between.",
+      "Somewhere in the dark, a gate hums like a hymn you don't believe in anymore.",
+      "A station bell chimes on the hour, like it's tryin' to remind folks time still matters.",
+      "Graveyard Orbit spins quiet today—quiet enough to make you nervous.",
+      "A tug drone drifts past, patched up with tape and hope, lookin' like a cousin of your own ship."
+    ];
+
+    const INTRO_SHIP_CONDITION = [
+      "Your ship's held together with duct tape, prayer, and overdue invoices.",
+      "Your ship's a rust-colored promise that barely keeps its word.",
+      "Your ship rattles when you breathe wrong, but it still answers the throttle.",
+      "Your ship ain't pretty, but it's yours—at least until the collectors find it.",
+      "Your ship smells like hot wiring and cold coffee. That's home, I reckon."
+    ];
+
+    const INTRO_BANKER_BITS = [
+      "A real friendly banker smiled right to your face while he stapled your future to a contract.",
+      "One bad loan and a handshake you can't take back put your name in the wrong ledger.",
+      "A lender with clean teeth and mean eyes wrote you a note you ain't done payin'.",
+      "You signed papers in a back office that smelled like cologne and old money.",
+      "Some suit called it an opportunity. You called it trouble. Trouble won."
+    ];
+
+    const INTRO_JOB_HOOKS = [
+      "The honest jobs are taken. The safe lanes are bought. What's left lives in the cracks.",
+      "Out here, every paycheck's got teeth, and every shortcut's got a price.",
+      "You can make a living honest, but you can't make it fast. Not with your numbers.",
+      "There's work if you don't ask too many questions—and if you don't mind the answers.",
+      "The station bar doubles as a mission board, confession booth, and last-chance chapel."
+    ];
+
+    const INTRO_CLOSERS = [
+      "Keep flyin'. Keep hustlin'. Keep breathin'.",
+      "One day you might make it out alive—or at least make it out even.",
+      "Someday the numbers might turn your way. Today ain't that day.",
+      "Ain't no heroes in the lane—just folks tryin' to stay afloat.",
+      "Point the nose at the next job and hope the universe blinks first."
+    ];
+
+    function generateIntroLines(player) {
+      const debt = (player && typeof player.debt === "number") ? player.debt : STARTING_DEBT;
+      const credits = (player && typeof player.credits === "number") ? player.credits : STARTING_CREDITS;
+
+      const lines = [];
+      lines.push(choice(INTRO_TITLE_LINES));
+      lines.push("");
+
+      lines.push(choice(INTRO_WELCOME_LINES));
+      lines.push("");
+
+      // Flavor block (3–5 lines)
+      const flavor = [
+        choice(INTRO_ORBIT_SCENES),
+        choice(INTRO_SHIP_CONDITION),
+        choice(INTRO_BANKER_BITS),
+        choice(INTRO_JOB_HOOKS)
+      ];
+      // Add a little extra variety occasionally
+      if (Math.random() < 0.55) flavor.push(choice(INTRO_ORBIT_SCENES));
+      if (Math.random() < 0.35) flavor.push(choice(INTRO_CLOSERS));
+
+      // De-dupe any accidental repeats while preserving order
+      const seen = new Set();
+      for (const f of flavor) {
+        if (!f) continue;
+        if (seen.has(f)) continue;
+        seen.add(f);
+        lines.push(f);
+      }
+
+      lines.push("");
+
+      // Required info: debt + what you can do
+      lines.push(`You start with ${credits} credits and you owe ${debt} credits.`);
+      lines.push("You can:");
+      lines.push("- Visit the bar for job offers");
+      lines.push("- Trade cargo at markets");
+      lines.push("- Travel between stations (and risk trouble in the lane)");
+      lines.push("- Mine asteroids");
+      lines.push("- Buy upgrades at the outfitter");
+      lines.push("- Play Spacejack if you can afford the bet");
+      lines.push("- Save/Load your run");
+
+      lines.push("");
+      lines.push(choice(INTRO_CLOSERS));
+      return lines;
+    }
 
     // =========================================================
     // MUSIC TRACKS
@@ -511,6 +707,74 @@
       return wealth.charAt(0).toUpperCase() + wealth.slice(1);
     }
 
+    function hashStringToInt(str) {
+      let h = 0;
+      for (let i = 0; i < str.length; i++) {
+        h = ((h << 5) - h) + str.charCodeAt(i);
+        h |= 0; // 32-bit
+      }
+      return Math.abs(h);
+    }
+
+    function getArrivalGreeting(sys) {
+      if (!sys) return null;
+      const name = sys.name || "this station";
+      const wealth = sys.wealth || "average";
+
+      const openerPool = (ARRIVAL_OPENERS[wealth] || ARRIVAL_OPENERS.average);
+      const detail = (ARRIVAL_DETAILS[wealth] || ARRIVAL_DETAILS.average);
+
+      const h = hashStringToInt(name);
+      const opener = openerPool[h % openerPool.length];
+      const sight = detail.sights[(h >>> 8) % detail.sights.length];
+      const sound = detail.sounds[(h >>> 16) % detail.sounds.length];
+
+      // Name is included in the line so each station reads uniquely.
+      return `You ${opener} ${name}. ${sight}, and ${sound}.`;
+    }
+
+    function hasMoonSugar() {
+      return !!(game.player && game.player.cargo && (game.player.cargo[MOON_SUGAR] || 0) > 0);
+    }
+
+    function wipeAllCargo() {
+      if (!game.player) return;
+      game.player.cargo = {};
+    }
+
+    function accrueInterestDays(days, lines) {
+      const d = Math.max(0, days | 0);
+      for (let i = 0; i < d; i++) {
+        if (!game.player || game.player.debt <= 0) return;
+        const interest = Math.max(1, Math.floor(game.player.debt * INTEREST_RATE));
+        game.player.debt += interest;
+        if (Array.isArray(lines)) lines.push(`Debt interest accrued: +${interest} credits`);
+      }
+    }
+
+    function maybeBustForMoonSugar(lines) {
+      if (!hasMoonSugar()) return;
+      if (Math.random() >= MOON_SUGAR_BUST_CHANCE_ON_ARRIVAL) return;
+
+      lines.push("");
+      lines.push("Blue lights wash the hull. A local deputy's voice hits the radio like a hammer: \"Hold tight, hauler. We got ourselves a sweet-tooth situation.\"");
+      lines.push("They board fast, sniff out the Moon Sugar, and start readin' charges off a cracked datapad.");
+      lines.push(`You're detained for ${MOON_SUGAR_DETENTION_DAYS} days.`);
+
+      // Time passes: apply extra days of interest
+      game.flags = game.flags || {};
+      // We'll skip the normal end-of-turn interest and apply exactly N days here.
+      game.flags.skipInterestThisTurn = true;
+      accrueInterestDays(MOON_SUGAR_DETENTION_DAYS, lines);
+
+      // Penalties
+      wipeAllCargo();
+      game.player.credits -= MOON_SUGAR_FINE;
+      lines.push("They dump your whole hold into an evidence locker and slap a seal on the hatch.");
+      lines.push(`Fine paid: -${MOON_SUGAR_FINE} credits.`);
+      lines.push("");
+    }
+
     // =========================================================
     // CORE CLASSES
     // =========================================================
@@ -541,6 +805,15 @@
           this.prices[cargo] = Math.floor(base * fluctuation);
         }
         this.prices["Asteroid Hearts"] = 2500;
+
+        // Moon Sugar:
+        // - Only sold at poor stations (buy menu), at a fixed 250.
+        // - Every other station will still quote a buy price of 350, ensuring +40% profit.
+        if (wealth === "poor") {
+          this.prices[MOON_SUGAR] = MOON_SUGAR_POOR_PRICE;
+        } else {
+          this.prices[MOON_SUGAR] = MOON_SUGAR_OTHER_PRICE;
+        }
       }
     }
 
@@ -807,6 +1080,11 @@
 
       // 4) Apply risk–reward multiplier (higher payout for lower structuralChance)
       baseReward = Math.floor(baseReward * rrMult);
+
+      // 4b) Apply per-mission-type payout multiplier
+      baseReward = Math.floor(baseReward * missionPayoutMultiplier(mtype));
+
+      // 4c) Global payout multiplier
       const reward = Math.floor(baseReward * CREDIT_MULTIPLIER);
 
       // 5) Apply upgrades to success chance (not payout)
@@ -845,6 +1123,15 @@
         }
 
         game.player.location = mission.destination;
+
+        // Arrival greeting
+        const greet = getArrivalGreeting(game.player.location);
+        if (greet) {
+          lines.push(greet);
+        }
+
+        // Contraband check on arrival
+        maybeBustForMoonSugar(lines);
       }
       return lines;
     }
@@ -1012,7 +1299,11 @@
       handleDebtClearedIfNeeded(activityLines);
 
       appendOutput("");
-      applyInterest();
+      if (game.flags && game.flags.skipInterestThisTurn) {
+        game.flags.skipInterestThisTurn = false;
+      } else {
+        applyInterest();
+      }
 
       // Interest could push debt up only if >0; but our rules keep debt at 0 once cleared.
       handleDebtClearedIfNeeded(activityLines);
@@ -1187,6 +1478,15 @@
 
       lines.push(`You drop back into realspace at ${destination.name}.`);
 
+      // Arrival greeting
+      const greet = getArrivalGreeting(destination);
+      if (greet) {
+        lines.push(greet);
+      }
+
+      // Contraband check on arrival
+      maybeBustForMoonSugar(lines);
+
       return lines;
     }
 
@@ -1229,6 +1529,11 @@
     function enterBuyCommodityPhase() {
       const market = game.player.location.market;
       const list = CARGO_TYPES.filter(c => c in market.prices);
+
+      // Moon Sugar is only *sold* at poor stations.
+      if (game.player.location.wealth === "poor" && (MOON_SUGAR in market.prices)) {
+        list.push(MOON_SUGAR);
+      }
       if (!list.length) {
         appendOutput("No commodities available to buy here.");
         showTradeHelp();
@@ -1966,11 +2271,10 @@ function handleSpacejackCommand(raw) {
       };
       game.spacejack = null;
 
-      appendOutput("DIRT POOR IN DEEP SPACE");
-      appendOutput("");
-      appendOutput("Welcome to Graveyard Orbit.");
-      appendOutput("");
-      appendOutput("After a loan from a real friendly banker, you owe more than your life is worth. There's plenty of honest work out here, but you won't be doing most of it. Your ship is capable even if it is a little rusty. Take jobs, mine asteroids, move cargo and buy upgrades. One day maybe you can make it out alive...");
+      const introLines = generateIntroLines(game.player);
+      for (const line of introLines) {
+        appendOutput(line);
+      }
       enterMainLoopTurn();
     }
 
