@@ -13,4 +13,4 @@ Out here, the bar is your mission board, the radio chatter is your weather repor
 
 <img width="2048" height="1152" alt="1000158934" src="https://github.com/user-attachments/assets/b0d83090-cd77-429f-8688-3a22097c07eb" />
 
-This is a text based open galaxy adventure where you can live your low concept space country life. Current mechanics include mining, trading between stations, mission board, and a "Spacejack" mini game. This game is currently at Beta 1 release.
+This is a text based open galaxy adventure where you can live your low concept space country life. Current mechanics include mining, trading between stations, mission board, and a "Spacejack" mini game. This game is currently at v1.3 release.
