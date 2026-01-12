@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <!-- Mobile-friendly viewport; avoid over-constraining scaling -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dirt Poor in Deep Space v3b</title>
+  <title>Dirt Poor in Deep Space v1.21</title>
   <style>
     :root {
       /* Easy knob for global scaling on mobile */
@@ -17,13 +17,11 @@
       }
     }
 
-    /* Allow the whole page to scroll inside the itch.io iframe */
     html, body {
       margin: 0;
       padding: 0;
       height: 100%;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
+      overflow: hidden; /* Fix page-level scrolling */
     }
 
     body {
@@ -32,19 +30,17 @@
       font-family: monospace;
       display: flex;
       flex-direction: column;
-
-      /* Allow the document to be taller than the viewport */
-      min-height: 100vh;
-      height: auto;
+      height: 100dvh; /* Fill entire viewport */
     }
 
     #game-container {
       display: flex;
       flex-direction: column;
-      flex: 1;
+      height: 100%;
       padding: 0.5rem;
       box-sizing: border-box;
       gap: 0.4rem;
+      overflow: hidden;
     }
 
     /* Extra bottom padding on small screens so input can scroll above keyboard */
@@ -68,10 +64,172 @@
       -webkit-overflow-scrolling: touch;
     }
 
+    /* Screen-reader only text */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* Touch-friendly menu buttons (context-sensitive; shown when choices are available) */
+    #menu-panel {
+      border-top: 1px solid #333;
+      padding: 0.5rem;
+      background: #000000; /* Pure black */
+    }
+
+    #menu-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 6.4rem); /* Doubled width */
+      justify-content: center;
+      gap: 0.4rem;
+      /* Fixed width to maintain numpad shape */
+      width: fit-content;
+      margin: 0 auto;
+    }
+
+    .menu-btn {
+      appearance: none;
+      background: #000;
+      color: #fff; /* White numbers */
+      border: 1px solid #444;
+      border-radius: 0.35rem;
+      width: 6.4rem; /* Doubled width */
+      height: 3.2rem; /* Keep height consistent for touch */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: monospace;
+      font-size: 1.25rem;
+      font-weight: 700;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .menu-btn .t {
+      /* Visually hidden but keep for potentially easier restoration later */
+      display: none;
+    }
+
+    .menu-btn:hover {
+      border-color: #7ab8ff;
+    }
+
+    .menu-btn:active {
+      transform: translateY(1px);
+    }
+
+    .menu-btn:focus-visible {
+      outline: 3px solid #7ab8ff;
+      outline-offset: 2px;
+    }
+
+    .menu-btn.active-flash {
+      background: #7ab8ff !important;
+      color: #000 !important;
+      border-color: #fff !important;
+      transform: scale(0.95);
+      transition: none;
+    }
+
     #input-row {
       display: flex;
       align-items: center;
       gap: 0.4rem;
+    }
+
+    #toggle-menu-btn {
+      appearance: none;
+      background: #222;
+      color: #aaa;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 0.2rem 0.4rem;
+      font-family: monospace;
+      font-size: 0.75rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    #toggle-menu-btn:hover {
+      background: #333;
+      color: #fff;
+    }
+
+    #toggle-theme-btn {
+      appearance: none;
+      background: #222;
+      color: #aaa;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 0.2rem 0.4rem;
+      font-family: monospace;
+      font-size: 0.75rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    #toggle-theme-btn:hover {
+      background: #333;
+      color: #fff;
+    }
+
+    /* Light Mode Color Overrides */
+    body.light-mode {
+      background: #f5f5f5;
+      color: #000000;
+    }
+
+    body.light-mode #output {
+      background: #ffffff;
+      color: #000000;
+      border-color: #ccc;
+    }
+
+    body.light-mode #menu-panel {
+      background: #f5f5f5;
+      border-top-color: #ccc;
+    }
+
+    body.light-mode .menu-btn {
+      background: #fff;
+      color: #000;
+      border-color: #999;
+    }
+
+    body.light-mode .menu-btn:hover {
+      border-color: #7ab8ff;
+      background: #f0f8ff;
+    }
+
+    body.light-mode .menu-btn.active-flash {
+      background: #7ab8ff !important;
+      color: #000 !important;
+    }
+
+    body.light-mode #command {
+      background: #ffffff;
+      color: #000000;
+      border-color: #ccc;
+    }
+
+    body.light-mode #toggle-menu-btn,
+    body.light-mode #toggle-theme-btn {
+      background: #ddd;
+      color: #333;
+      border-color: #999;
+    }
+
+    body.light-mode #toggle-menu-btn:hover,
+    body.light-mode #toggle-theme-btn:hover {
+      background: #ccc;
+      color: #000;
     }
 
     #prompt {
@@ -100,10 +258,19 @@
 </head>
 <body>
   <div id="game-container">
-    <div id="output"></div>
+    <div id="output" role="log" aria-live="polite" aria-atomic="false"></div>
+
+    <!-- Context-sensitive menu buttons (touch + mouse friendly) -->
+    <nav id="menu-panel" aria-label="Menu" hidden>
+      <div id="menu-grid" role="group" aria-label="Main menu options"></div>
+    </nav>
+
     <div id="input-row">
-      <span id="prompt">&gt;</span>
-      <input id="command" type="text" autocomplete="off" />
+      <button id="toggle-menu-btn" type="button" aria-pressed="false">Show Buttons</button>
+      <span id="prompt">></span>
+      <label class="sr-only" for="command">Command input</label>
+      <input id="command" type="text" autocomplete="off" inputmode="text" aria-label="Command input" />
+      <button id="toggle-theme-btn" type="button">Light</button>
     </div>
   </div>
 
@@ -176,23 +343,7 @@
       "Red Dirt Depot",
       "Holler Point",
       "Grange Station",
-      "Backline Cross",
-      "Dead Man's Dock",
-      "Last Chance Hub",
-      "Sagebrush Ring",
-      "Truckstop Theta",
-      "Cowpoke Transfer",
-      "Bluegrass Spindle",
-      "Rustwheel Station",
-      "Trailerlight Yard",
-      "Haywire Depot",
-      "Crosswind Relay",
-      "Dry Gulch Port",
-      "Splitrail Station",
-      "Broken Axle Gate",
-      "Outrider's Rest",
-      "Gravelbite Hub",
-      "Lowcountry Pier"
+      "Backline Cross"
     ];
 
     const WEALTH_LEVELS = ["poor", "average", "rich"];
@@ -203,11 +354,7 @@
     ];
 
     const MOON_SUGAR = "Moon Sugar";
-    const MOON_SUGAR_POOR_PRICE = 250;
-    const MOON_SUGAR_OTHER_PRICE = Math.floor(MOON_SUGAR_POOR_PRICE * 1.4); // guaranteed +40% profit
-
-    const MOON_SUGAR_BUST_CHANCE_ON_ARRIVAL = 0.50;
-    const MOON_SUGAR_DETENTION_DAYS = 3;
+    const MOON_SUGAR_DETENTION_DAYS = 1;
     const MOON_SUGAR_FINE = 1000;
 
     const PASSENGER_TYPES = [
@@ -244,18 +391,30 @@
     ];
 
     // =========================================================
-    // TUNING KNOBS
+    // TUNING KNOBS (User Serviceable)
     // =========================================================
 
-    const CREDIT_MULTIPLIER = 2.2;
+    const CREDIT_MULTIPLIER = 1;
+    const MIN_MISSION_PAYOUT_MIN = 1000; // Floor range start for missions
+    const MIN_MISSION_PAYOUT_MAX = 1500; // Floor range end for missions
+    const FAILURE_LOSS_PERCENT = 0.15; // 20% loss of mission payout on failure
+    const UPGRADE_PAYOUT_BONUS_PER_TIER = 0.10; // 10% bonus per tier of matching upgrade
+    const UPGRADE_MISSION_PAYOUT_FLAT = 200; // Final flat credit bonus per tier for combat/passenger
+
+    // Moon Sugar economy and risk
+    const MOON_SUGAR_BUY_PRICE = 250; // Fixed buy price at poor stations
+    const MOON_SUGAR_SELL_AVG = 500; // Fixed sell price at average stations
+    const MOON_SUGAR_SELL_RICH = 750; // Fixed sell price at rich stations
+    const MOON_SUGAR_BUST_AVG = 0.35; // 35% chance of bust at average stations
+    const MOON_SUGAR_BUST_RICH = 0.60; // 60% chance of bust at rich stations
+    const MOON_SUGAR_BUST_POOR = 0.05; // 5% chance of bust at source (poor) stations
 
     // Mission payout tuning knobs (applied after risk-reward scaling, before the global CREDIT_MULTIPLIER)
-    // Set to 1.0 for no change.
     const MISSION_PAYOUT_MULT = {
-      cargo: 1.0,
-      passenger: 1.75,
+      cargo: 1.2,
+      passenger: 3,
       bounty: 2,
-      mining: 1.0
+      mining: 1.2
     };
 
     function missionPayoutMultiplier(type) {
@@ -266,7 +425,7 @@
     }
 
     const TRADE_SELL_MULTIPLIER = 1.0; // sell at the advertised buy price
-    const INTEREST_RATE = 0.025; // 2%
+    const INTEREST_RATE = 0.025; // 2.5%
 
     // Cargo capacity
     const BASE_CARGO_CAPACITY = 20;
@@ -276,10 +435,9 @@
     const SPACEJACK_BET = 1000;
     const SPACEJACK_WINNINGS = 1000; // net profit on a win (bet is already deducted)
     const SPACEJACK_DEALER_STAND = 17;
+    const SPACEJACK_WIN_RATE = 0.65; // 60% win rate
 
-    // Piracy tuning:
-    // Fixed chance for every off-base interaction (travel, mission, mining).
-    // No wealth/cargo/credits modifiers.
+    // Piracy tuning (Fixed chance for off-base interaction)
     const PIRACY_FIXED_RATE = 0.25; // 25%
 
     // =========================================================
@@ -287,9 +445,36 @@
     // =========================================================
 
     const ARRIVAL_OPENERS = {
-      poor: ["roll up on", "drift in to", "ease in to", "limp in to", "slide in to"],
-      average: ["drop into", "coast into", "set down at", "roll in to", "pull in to"],
-      rich: ["glide into", "slip in to", "arrive at", "dock up at", "ease in to"]
+      poor: [
+        "roll up on", "drift in to", "ease in to", "limp in to", "slide in to",
+        "stumble upon", "coast toward", "creep into", "weave into", "shuffle into",
+        "lumber into", "amble toward", "edge into", "bash into", "clatter into",
+        "whirr toward", "sputter into", "drag yourself to", "limp toward", "float into",
+        "drift toward", "bob toward", "sway into", "meander into", "crawl toward",
+        "inch into", "slither into", "skulk into", "sidle into", "shamble toward",
+        "trudge into", "plod toward", "stomp into", "clump toward", "hustle into",
+        "scurry into", "scuttle toward", "hasten into", "rush toward"
+      ],
+      average: [
+        "drop into", "coast into", "set down at", "roll in to", "pull in to",
+        "arrive at", "dock at", "moor at", "berth at", "land at",
+        "descend to", "touch down at", "settle at", "park at", "stop at",
+        "visit", "reach", "attain", "gain", "approach",
+        "near", "draw close to", "close in on", "come upon", "happen upon",
+        "discover", "find", "locate", "spot", "sight",
+        "target", "zero in on", "aim for", "head for", "make for",
+        "steer for", "navigate to", "guide to", "pilot to", "fly to",
+        "soar into", "bank into", "dive into", "plunge into", "surge into",
+        "sweep into", "brush into", "skim into", "glide into", "slide into"
+      ],
+      rich: [
+        "glide into", "slip in to", "ease in to", "ghost in to", "arrive at",
+        "dock at", "take a berth at", "set down at", "moor at", "berth at",
+        "kiss the clamps at", "drift up to", "come in clean at", "line up on",
+        "roll smooth into", "sail into", "float in to", "coast in to",
+        "slot into", "lock in to", "settle in at", "touch down at",
+        "pull in quiet to", "swing in to", "bank in to", "slide in to"
+      ]
     };
 
     const ARRIVAL_DETAILS = {
@@ -299,233 +484,463 @@
           "weld seams shine under cheap floodlamps",
           "half the signage is hand-painted and the other half is peeled clean",
           "somebody's patched the hull plating with whatever they had handy",
-          "a busted tug drone limps past like it owes money"
+          "a busted tug drone limps past like it owes money",
+          "a trail of hydraulic fluid marks the path to the main bay",
+          "the docking clamps are covered in thick, black grease",
+          "a stack of empty crates is piled high in a corner",
+          "a group of scavengers are picking through a pile of scrap",
+          "the station's name is barely visible through a layer of grime",
+          "a flickering neon sign says EAT AT JOE'S in letters that are barely legible",
+          "the airlock doors are covered in thousands of tiny scratches",
+          "a discarded environmental suit is hanging from a pipe",
+          "a layer of ancient, grey dust coats everything in sight",
+          "a group of miners are arguing over an empty fuel canister",
+          "the main corridor is lit by a single, buzzing neon tube",
+          "a puddle of green slime is slowly expanding on the floor",
+          "the station's gravity is slightly inconsistent, making you feel light",
+          "a rusted robot is trying to paint over a section of graffiti",
+          "the walls are covered in thousands of signed napkins and old photos",
+          "a group of traders are bartering over a crate of synthetic gin",
+          "the station's life support vent is exhaling a slow, steady stream of black smoke",
+          "a pile of discarded electronics is smoldering in a corner",
+          "the docking bay is cluttered with hundreds of different tools",
+          "a group of travelers are sleeping on a pile of cargo nets",
+          "the station's main computer is enclosed in a cage of chicken wire",
+          "a flickering light reveals a group of space-rats scurrying away",
+          "the air is thick with the scent of ozone and stale tobacco",
+          "a rusted bulkhead door is held shut by a heavy iron chain",
+          "a faded poster for a long-forgotten planet is peeling off the wall",
+          "a group of children are playing a game of star-tag in the corridor",
+          "the station's water recycler is making a sound like a giant's growl",
+          "a pile of empty fuel cells is stacked near the power conduit",
+          "a group of technician are working on a section of the floor plating",
+          "the docking bay's window is reinforced with heavy iron bars",
+          "a discarded datapad is looping a video of a sunrise on a planet",
+          "the station's hull is covered in hundreds of different 'signatures'",
+          "a faint haze of gas from a leaky valve catches the light",
+          "a group of traders are arguing over the price of a single AI core",
+          "the station's main viewport is cracked, giving the stars a distorted look",
+          "a rusted anchor is hanging from a crane in the docking bay",
+          "a pile of discarded cargo containers is shaped like a small mountain",
+          "the station's life support vent is exhaling a slow, steady stream of white vapor",
+          "a flickering light reveals a group of shadow-clothed figures",
+          "the air is thick with the smell of wet wool and engine oil",
+          "a rusted bulkhead door is covered in hundreds of different dents",
+          "a group of travelers are bartering over a crate of medical supplies",
+          "the station's main viewport reveals a field of ancient, grey rubble",
+          "a pile of discarded space-suits is heaped near the airlock",
+          "the station is a lonely, brilliant spark in the vast, overwhelming dark"
         ],
         sounds: [
           "the radio crackles like it ain't been loved in years",
           "you hear laughter, then coughing, then more laughter",
           "a dispatcher drawls slow as molasses",
           "somebody's music leaks through the bulkheads - off key and proud",
-          "tools clatter like a rainstorm in a tin shed"
+          "tools clatter like a rainstorm in a tin shed",
+          "a low thrumming sound vibrates through the floor constantly",
+          "the sound of a distant freighter docking is a rhythmic boom",
+          "a group of miners are singing a song about a golden star",
+          "the airlock makes a sound like a giant's sigh when it opens",
+          "a robot is making a series of sharp, rhythmic pings",
+          "the sound of water dripping into a metal bucket is constant",
+          "a group of traders are arguing in a dozen different languages",
+          "the station's power generator is making a low, rhythmic throb",
+          "a group of children are laughing and shouting in the corridor",
+          "the sound of a distant explosion vibrates through the hull",
+          "a group of technicians are shouting instructions over a series of loud bangs",
+          "the station's communication array is making a sound like a ghostly whisper",
+          "a group of travelers are talking in hushed, nervous tones",
+          "the sound of a ship's engine starting is a loud, rhythmic scream",
+          "a group of traders are laughing and clinking glasses in the bar",
+          "the station's life support system is making a sound like a tired accordion",
+          "a pair of patrol ships are making their slow, rhythmic rounds",
+          "the sound of a distant bell chimes on the hour, every hour",
+          "a group of miners are shouting instructions over a series of loud pings",
+          "the sound of a hydraulic lift is a slow, rhythmic groan",
+          "a group of traders are bartering over a series of sharp, rhythmic pings",
+          "the sound of a heavy door slamming shut echoes",
+          "someone is playing a harmonica in a nearby cargo bay",
+          "the station's AI is reciting a series of long, boring safety warnings",
+          "a group of travelers are arguing over which way is to the bar",
+          "the sound of a welding torch is a bright, rhythmic hiss",
+          "somebody is whistling a tune that sounds familiar, but you can't place it",
+          "the sound of a vacuum pump is a constant, rhythmic wheeze",
+          "a group of children are playing a game of rocket-race in the corridor",
+          "the station's water recycler is making a sound like a giant's growl",
+          "a technician is tapping a pattern on a metal pipe with a wrench",
+          "the sound of a distant alarm is a faint, rhythmic beep",
+          "somebody is laughing at a joke you didn't hear",
+          "the sound of a cargo crane is a slow, rhythmic clang",
+          "a group of miners are talking about a big find in the belt",
+          "the station's communication array is making a sound like a ghostly whisper",
+          "a group of travelers are whispering in hushed, nervous tones",
+          "the sound of a ship's engines idling is a low, constant hum",
+          "somebody is crying softly in a dark corner",
+          "the sound of a dog barking is a strange, unexpected noise",
+          "a technician is shouting instructions to a robot across the bay",
+          "the station's power generator is making a low, rhythmic throb",
+          "somebody is singing a song in a language you don't understand",
+          "the sound of metal scraping on metal is a sharp, rhythmic screech",
+          "the station is a cacophony of a thousand different noises"
         ]
       },
       average: {
         sights: [
           "freight lanes are busy and the dock crews look half-awake",
           "cargo skiffs run steady like clockwork",
-          "the market boards update one pixel at a time",
+          "the market boards scroll prices like tomorrow ain't promised",
           "the customs line moves just fast enough to keep folks from cussin'",
-          "traffic control runs it plain and honest"
+          "traffic control runs it plain and honest",
+          "a union steward argues with a foreman over overtime in low, tired voices",
+          "fuel hoses hang from the ceiling like sleeping snakes",
+          "dockhands mark your hull with chalk codes you pretend not to understand",
+          "a vending alcove offers coffee, patch kits, and three kinds of regret",
+          "the station clinic advertises quick stitches and slower questions",
+          "a shipment of water drums is stacked like a frontier wall",
+          "security drones patrol lazy and regular, more for show than bite",
+          "the public boards are plastered with work orders and missing-person notices",
+          "someone's running a side market out of a tool cart near Bay Three",
+          "the grav feels steady, like boots on a hard floor",
+          "advert lights buzz above a row of shops that all sell the same essentials",
+          "a courier sprints past with a sealed satchel and a guilty face",
+          "your docking receipt prints on paper-thin stock that smells like hot plastic",
+          "a row of battered barges is queued up, waiting their turn like cattle",
+          "a repair crew patches micrometeor scars with fast welds and faster jokes",
+          "the main viewport shows a steady parade of ships, none of 'em in a hurry",
+          "a bulletin kiosk loops safety tips and job postings in the same flat voice",
+          "the air tastes like metal and instant noodles",
+          "someone's painted lane-maps on the wall with a steady hand and cheap ink",
+          "the station feels lived-in, functional, and a little worn around the edges"
         ],
         sounds: [
           "the comms are all business and no poetry",
           "a bored controller reads out docking numbers like a bedtime story",
           "you catch a weather report nobody asked for",
-          "a mechanic hollers at a rookie over open channel",
-          "everybody talks like they're behind schedule"
+          "a mechanic chews out a rookie over open channel",
+          "everybody talks like they're behind schedule",
+          "boots and carts rattle through the corridor in a steady rhythm",
+          "an announcement reminds you to declare weapons, contraband, and livestock",
+          "the hum of cheap fluorescents rides under everything like a bad note",
+          "a cargo crane squeals, then settles into a patient grind",
+          "somebody laughs too loud in the canteen, like they're tryin' to convince themselves",
+          "a payment terminal chirps and approves a charge you didn't mean to make",
+          "the water recycler gurgles like it's got opinions",
+          "traders haggle in calm tones that still sound like a fight",
+          "life support breathes in a low, steady thrum",
+          "a security officer recites rules that everybody already breaks",
+          "a ship spins up its engines and the whole station answers back in vibration",
+          "somebody plays a harmonica over a tinny speaker and calls it music",
+          "an elevator dings like it's embarrassed to exist",
+          "a printer spits out manifests in angry little bursts",
+          "coffee machines hiss and groan like old dogs"
         ]
       },
       rich: {
         sights: [
-          "polished plating throws your headlights right back at you",
+          "polished plating throws your running lights right back at you",
           "dockhands stand straight and smile like it's in the contract",
           "security cams track you smooth as a hawk",
           "the neon's clean and the floors look too new to be real",
-          "even the vacuum out here feels expensive"
+          "even the vacuum out here feels expensive",
+          "a concierge kiosk offers directions, refreshments, and quiet judgment",
+          "a velvet-rope checkpoint divides the clean money from the working folk",
+          "maintenance drones glide by in perfect formation, paint unscuffed",
+          "your ship looks rougher the closer you get to the spotless docking ring",
+          "advert panels show smiling captains with hands that never touched a wrench",
+          "a fountain loops recycled water like it's a miracle",
+          "a glass-front lounge hangs over the bay, full of people watching you arrive",
+          "the air smells like citrus cleaner and expensive tobacco",
+          "their hazard stripes are crisp enough to cut you",
+          "security wears pressed uniforms and friendly eyes that don't miss a thing",
+          "the docking clamps close soft, like they don't want to startle your paint",
+          "a valet drone offers to tow you to a private berth for an unholy fee",
+          "the station map blooms in hologram, bright as a carnival",
+          "a row of boutique storefronts sells luxury parts you don't need",
+          "the main viewport frames the stars like a painting in a gallery",
+          "even the warning signs use nicer fonts",
+          "a pair of inspectors in clean gloves pretend not to wrinkle their noses",
+          "a trophy wall shows plaques for record hauls and charitable donations",
+          "the place shines so hard it makes you feel underdressed"
         ],
         sounds: [
           "comms are crisp and quiet, like folks got money to lose",
           "a greeter voice says 'howdy' like it means 'don't cause trouble'",
           "the station hum is so clean it near on feels judgmental",
           "a clerk reminds you of the rules - politely, but sharp",
-          "nobody raises their voice, but everybody hears everything"
+          "nobody raises their voice, but everybody hears everything",
+          "soft music drifts through hidden speakers like a threat in velvet",
+          "an automated voice thanks you for choosing their 'premium docking experience'",
+          "your receipt prints with a pleasant chime and a painful total",
+          "security radios whisper in codes you ain't meant to learn",
+          "a high-end air scrubber sighs like a well-bred animal",
+          "a door slides open with a quiet hiss, smooth as oiled leather",
+          "somebody laughs in the lounge like they've never lost a bet",
+          "a piano plays somewhere out of sight, steady as a heartbeat",
+          "the power grid purrs - not a rattle in it",
+          "a valet drone announces your bay assignment like it's a title",
+          "even the alarms sound polite"
         ]
       }
     };
 
     // Mining free-action success tuning
-    const MINING_BASE_SUCCESS = 0.6;
+    const MINING_BASE_SUCCESS = 0.5;
     const MINING_SUCCESS_PER_TIER = 0.1;
     const MINING_MAX_SUCCESS = 0.9;
 
     // Mission success tuning (full-success only; partial handled separately)
     const MISSION_BASE_SUCCESS = 0.5;
-    const MISSION_MAX_SUCCESS = 0.8;
-    const NON_UPGRADED_MAX_SUCCESS = 0.7;
+    const MISSION_MAX_SUCCESS = 0.9;
+    const NON_UPGRADED_MAX_SUCCESS = 0.6;
 
     // Risk–reward scaling: missions with structural chance below this
     // get increased payouts up to MAX_RISK_REWARD_MULT at MIN_RISK_CHANCE.
-    const RISK_REWARD_PIVOT = 0.5;       // 50%
-    const MIN_RISK_CHANCE = 0.1;         // 10%
+    const RISK_REWARD_PIVOT = 0.75;       // 50%
+    const MIN_RISK_CHANCE = 0.25;         // 10%
     const MAX_RISK_REWARD_MULT = 3.5;    // up to ~3.5x at 10%
 
     // Chance that any job board will contain exactly one 100% mission
-    const BOARD_GUARANTEED_RATE = 0.03;  // ~3% of boards, <5% globally
+    const BOARD_GUARANTEED_RATE = 0.10;  // ~3% of boards, <5% globally
 
     const STARTING_CREDITS = 250;
     const STARTING_DEBT = 25000;
 
     // Repo men / debt failure
-    const DEBT_FAILURE_THRESHOLD = 200000;
+    const DEBT_FAILURE_THRESHOLD = 100000;
 
     // =========================================================
     // FLAVOR TEXT (TRIMMED)
     // =========================================================
 
     const BAR_SCENES = [
-      `The bar smells like spilled beer and hot coolant.`,
-      `A battered jukebox wheezes out old rim-country tunes.`,
-      `Dust from the cargo bays drifts in every time the door cycles.`,
-      `Someone's welded a horseshoe to the bulkhead for luck. It's upside down.`,
-      `Bootprints in hydraulic fluid track across the scuffed deck plates.`,
-      `The bartender polishes chipped mugs with a rag older than the station.`,
-      `A cracked viewscreen shows a looping feed of passing freighters.`,
-      `Ceiling fans spin slow, shoving warm, recycled air in lazy circles.`,
-      `A neon sign shaped like a rocket flickers between OPEN and OPE.`,
-      `The ice in your drink tastes faintly of rust and antifreeze.`
+      "The bar smells like spilled beer and hot coolant.",
+      "A battered jukebox wheezes out old rim-country tunes.",
+      "Dust from the cargo bays drifts in every time the door cycles.",
+      "Someone welded a horseshoe to the bulkhead for luck. It's upside down.",
+      "Bootprints in hydraulic fluid track across the scuffed deck plates.",
+      "The bartender polishes chipped mugs with a rag older than the station.",
+      "A cracked viewscreen loops silent footage of passing freighters.",
+      "Ceiling fans turn slow, shoving warm recycled air in lazy circles.",
+      "A neon rocket sign flickers between OPEN and OPE.",
+      "The ice in your drink tastes faintly of rust and antifreeze.",
+      "A half-empty bottle of rotgut sits on the bar, unlabeled and threatening.",
+      "Cheap cigars fight with ozone and fryer grease for control of the air.",
+      "A deckhand in grease-stained coveralls sleeps face-down at a corner table.",
+      "Somewhere under the music, you hear the station's bones creak.",
+      "The lights are dimmed to hide the stains and help the lies go down.",
+      "Mismatched shot glasses line up behind the bar like wanted posters.",
+      "A distant freighter docks, and the floor answers back with a low shiver.",
+      "A hand-drawn belt map is pinned to the wall with a knife that ain't decorative.",
+      "A one-eyed scrap dog snoozes under the radiator, dreaming of trouble.",
+      "The mirror behind the bar is spiderwebbed from an old argument.",
+      "Plastic ferns in the corners wear a coat of honest dust.",
+      "Frying protein and burnt coffee drift out of the kitchen hatch.",
+      "The bathroom door hangs on one hinge and reads OUT OF ORDER in crayon.",
+      "A bowl of snacks sits out like it's been there since first light.",
+      "The jukebox skips every third beat, like it can't decide if it's sad or mean.",
+      "Miners in the back booth play cards like rent is due tomorrow.",
+      "The bartender keeps a scattergun under the counter and a smile that don't blink.",
+      "A single muddy boot under a stool waits for its owner to come back.",
+      "The ceiling's plastered with signed napkins from spacers long gone.",
+      "The air conditioning hums at a pitch that makes your teeth itch.",
+      "A flickering hologram palm tree sits on the bar, lookin' homesick.",
+      "Half the stools wobble. The other half bite.",
+      "Overdue invoices get used as coasters by the regular at the end.",
+      "The NO WEAPONS sign has been shot so full of holes it's mostly suggestion.",
+      "Disinfectant tries hard to cover up stale smoke and old blood.",
+      "A spider built a web across the EMPLOYEE OF THE MONTH plaque.",
+      "The floor's sticky enough to steal the soles off your boots.",
+      "A bucket catches a slow drip of emerald coolant from an overhead pipe.",
+      "Behind the taps, the bartender reads a dog-eared romance like it's gospel.",
+      "A poster for a canceled show still hangs, sun-faded and stubborn.",
+      "The ice machine rattles like gravel in a tin drum.",
+      "Frost rims the window that looks out on the docking bay dark.",
+      "The only window is barred, grimed, and still somehow nosy.",
+      "A discarded datapad loops a sunrise video on a world nobody can afford.",
+      "Wet wool, engine oil, and desperation cling to everyone in the room.",
+      "The place goes quiet in a hurry every time the door cycles.",
+      "The bartender's hands are scarred from a lifetime of negotiations.",
+      "Foreign coins from a dozen systems are nailed into the bar top for bragging rights.",
+      "A small cactus in a tin cup wears a tiny cowboy hat like it means it.",
+      "Somebody's spittoon is actually a cut-off fuel can.",
+      "A busted arcade cabinet offers one game: HIGH STAKES.",
+      "A notice by the door reads: PAY IN ADVANCE. NO EXCEPTIONS."
     ];
 
     const NPC_OPENERS = [
-      `A stranger in a faded flight jacket tips their hat and sits across from you.`,
-      `A scarred hauler drops a datachip on your table like it's burning a hole in his hand.`,
-      `Someone says your name like they've been practicing it all week.`,
-      `A calloused hand nudges a cloudy glass your way. "From a friend," they say.`,
-      `A figure in a sun-bleached duster takes the seat you were saving.`,
-      `A courier in mud-caked boots sets a small crate down and backs away.`,
-      `Your comm goes dead mid-sentence, and a quiet voice says, "Time to listen."`,
-      `A voice behind you drawls, "Mind if I borrow this chair, captain?"`,
-      `A mercenary sets a dented helmet on your table and stares until you look up.`,
-      `A jittery local keeps counting exits instead of drinks.`
+      "A stranger in a faded flight jacket tips their hat and slides into your booth.",
+      "A scarred hauler drops a datachip on your table like it's a wager.",
+      "Someone says your name like they've been rehearsin' it all week.",
+      "A calloused hand nudges a cloudy glass your way. \"From a friend,\" they say.",
+      "A figure in a sun-bleached duster takes the seat you were savin'.",
+      "A courier in mud-caked boots sets a small crate down and backs away quick.",
+      "Your comm goes dead mid-sentence, and a quiet voice says, \"Time to listen.\"",
+      "A voice behind you drawls, \"Mind if I borrow this chair, captain?\"",
+      "A mercenary sets a dented helmet on your table and waits you out.",
+      "A jittery local keeps countin' exits instead of drinks.",
+      "A woman with a metal arm offers to buy you a drink for a story you ain't proud of.",
+      "A teenager with quick fingers asks if you're lookin' for work or lookin' for trouble.",
+      "A retired captain with a heavy limp sits down like your booth owes him rent.",
+      "A person in a heavy enviro-suit never lifts their visor while they talk.",
+      "A trader with a thick accent tries to sell you a map to a \"sure thing\".",
+      "A scavenger with grease behind their ears whispers about a fat haul in the belt.",
+      "A bounty hunter flips a datapad your way. \"Seen this face?\"",
+      "A pilot with bloodshot eyes asks if you've got spare coolant to trade.",
+      "A shadow in the next booth slides you a folded note without lookin' up.",
+      "Someone taps your shoulder and says, \"Boss wants a word.\"",
+      "An old timer hums a tune you ain't heard since your first bad jump.",
+      "A woman in a flight suit cleans a pistol slow and watches the door.",
+      "A technician asks if you're the one huntin' for \"special\" ship parts.",
+      "A person with a big lizard on their shoulder nods like you're already acquainted.",
+      "A nervous deckhand asks if you're hirin' for a one-way trip.",
+      "A trader with too many gold teeth offers a handshake and a deal you won't like.",
+      "A hooded figure reads a real paper book and ignores every soul in the room.",
+      "A man with a patch over one eye asks if you've ever run the outer lanes.",
+      "A woman with a voice like gravel asks if you're brave or just broke.",
+      "A stranger pushes a bowl of peanuts toward you like it's a peace offering.",
+      "Someone asks if your ship is as fast as it looks, and twice as illegal.",
+      "A person with a glowing neck tattoo stares like they're measurin' your price.",
+      "A hauler asks if you want in on a convoy through the rocks for protection.",
+      "A figure in a tattered uniform asks for help with a private mess.",
+      "A stranger offers you a cigarette and asks if you've heard the latest rumors.",
+      "Someone asks if you're the one who handled a job at Rustbucket Row.",
+      "A man with a heavy rucksack asks if you got room for one more body.",
+      "A woman with a sharp gaze asks if you're for sale or for hire.",
+      "A masked figure asks if you believe in luck, then laughs like you answered wrong.",
+      "A kid with a handheld scanner pretends they're just fidgetin'.",
+      "A person in a heavy coat asks if you've ever seen a star-eater.",
+      "A stranger asks if you want to play a game of Guess the Commodity.",
+      "Someone tells you you've got a look about you - the kind that pays in scars.",
+      "A man with a data-jack in his temple twitches and whispers to himself.",
+      "A woman in a big hat asks if you're interested in a legal-ish enterprise.",
+      "A stranger asks if you've ever been out past the Edge of the Sector.",
+      "Someone asks if you're the one been causin' trouble in the lanes.",
+      "A stranger leans in and says, \"You look like you can keep a secret.\"",
+      "A figure with dust on their boots asks for a moment of your time."
     ];
 
     const FAILURE_TEXT = [
-      `Station security picks today to actually read the paperwork.`,
-      `Local raiders hit the lane you swore was the quiet one.`,
-      `Something important in your ship pops, hisses, and stops working.`,
-      `Your fixer blocks your calls and forwards your file to the law.`,
-      `The universe cashes in on a debt you didn't realize you owed.`
+      "Station security picks today to actually read the paperwork.",
+      "Local raiders hit the lane you swore was the quiet one.",
+      "Something important pops, hisses, and quits like it never knew you.",
+      "The universe cashes in on a debt you didn't know you owed.",
+      "A fuel line leak forces a sweaty landing on a dead little rock.",
+      "An ion storm scrambles your nav and leaves you blind for a spell.",
+      "Your cargo's hotter than advertised, and somebody tipped off customs.",
+      "A rival hauler monkeys with your clamps while you're buyin' a drink.",
+      "The market takes a dive and your haul turns to pocket change.",
+      "Your ship's AI goes on strike until you clean the vents.",
+      "A stray pebble at speed knocks out your comms and leaves you silent.",
+      "Coolant fails and the cabin turns into an oven you can't step out of.",
+      "The station you were headin' to goes under quarantine mid-burn.",
+      "A clerk finds a typo in your permit and decides it's their lucky day.",
+      "Your gravity generator hiccups and everything floats, including your temper.",
+      "A local boss decides your cargo belongs to them now.",
+      "Your engine starts soundin' like a sack of angry squirrels in a blender.",
+      "You find a stowaway in the hold with a knife and a bad story.",
+      "A cheap datapad virus corrupts your route charts at the worst time.",
+      "A power surge fries your long-range scanners.",
+      "A docking mishap dents your hull and your pride, and the bill's worse.",
+      "Space-mites get into your wiring and start eatin' like they own the place.",
+      "Somebody sells your position for a handful of credits.",
+      "Station policy changes overnight and your cargo becomes a felony.",
+      "Life support develops a new rattle that sounds like a warning.",
+      "A meteor shower peppers your hull with tiny holes and big attitude.",
+      "Your shields sputter right as you hit a radiation patch.",
+      "A patrol decides your ship looks \"inspectable\".",
+      "Your cargo doors stick open in vacuum. You learn new prayers.",
+      "A glitch scrubs your bank record like you never existed.",
+      "Thrusters misfire and put you into a slow, sick spin.",
+      "That shortcut through the nebula dead-ends into trouble.",
+      "Your water recycler breaks and you're down to your last bottle.",
+      "A misunderstanding buys you a night in the brig and a sour morning.",
+      "Your sensors tag a pirate pack as \"friendly traffic\".",
+      "A star flare knocks your electronics sideways.",
+      "Your hull starts decompressing in places you were hopin' to keep.",
+      "A \"guaranteed\" job is a trap laid by a client with a grudge.",
+      "Landing gear folds on touchdown and the sparks tell the whole bay.",
+      "A cargo canister leaks mystery gas into the cabin.",
+      "Autopilot decides to take you somewhere you didn't pick.",
+      "A toll gang sets up on the lane and calls it \"fees\".",
+      "Your reactor hums at a frequency that makes your teeth ache.",
+      "A tax collector decides your ship is a taxable lifestyle choice.",
+      "Somebody hijacks your comms and fills them with ads and threats.",
+      "A small repair turns into a full-blown overhaul.",
+      "Your hull gets tagged with graffiti that offends the wrong people.",
+      "A docking computer glitch sends you into a slow, humiliating spin.",
+      "The universe just decides today is the day everything goes wrong."
     ];
 
     const CB_CHATTER = [
-      `Breaker one-nine, this is Mudrunner out of Dust Creek, anyone got eyes on lane traffic?`,
-      `How 'bout ya, rustbuckets - this here's Black Dog, ridin' heavy and runnin' late.`,
-      `Evenin' spacers, this is Tractor Pull, haulin' rocks and bad decisions through the line.`,
-      `Breaker breaker, Grease Angel here - y'all keep it slow past Holler Point, patrols are thick.`,
-      `This is Freight Train Twelve callin' from the dark side - someone left a crate floatin' in the lane.`,
-      `Midnight Rambler checkin' in, coffee's bad and the company’s worse, how's your run lookin'?`,
-      `Rustbucket Row switchboard, y'all speak up one at a time, can't hear nothin' but static and lies.`,
-      `This is Gravel Ghost, slidin' quiet through the back road vectors. Keep your noses clean, haulers.`,
-      `Breaker, Longhaul Jack here - if you see my trailer drifting, she ain't stolen, she's just lazy.`,
-      `Lowcountry Lark checkin' in - stars look good, schedule looks bad.`
+      "Breaker one-nine, this is Mudrunner out of Dust Creek - anybody got eyes on lane traffic?",
+      "How 'bout ya, rustbuckets - this here's Black Dog, ridin' heavy and runnin' late.",
+      "Evenin' spacers, Tractor Pull here - haulin' rocks and bad decisions through the line.",
+      "Breaker breaker, Grease Angel - keep it slow past Holler Point, patrols are thick.",
+      "Freight Train Twelve callin' - somebody left a crate floatin' right in the lane.",
+      "Midnight Rambler checkin' in - coffee's bad and the company's worse. How's your run?",
+      "Rustbucket Row switchboard - speak up one at a time, I got nothin' but static and lies.",
+      "Gravel Ghost slidin' quiet through the back vectors. Keep your noses clean, haulers.",
+      "Longhaul Jack here - if you see my trailer driftin', she ain't stolen. She's just stubborn.",
+      "Lowcountry Lark checkin' in - stars look good, schedule looks bad.",
+      "Stardust Sam out of Sagebrush - any news on fuel prices at Last Chance Hub?",
+      "Breaker one-nine, Iron Horse - got a big convoy comin' through Broken Axle Gate.",
+      "Howdy spacers, Wildflower here - anybody seen a missin' tug drone near Gravelbite Hub?",
+      "Shadow Runner callin' - watch for unmarked ships near Red Dirt Depot.",
+      "Freightliner Forty-Two haulin' AI cores - anybody got a friendly ear and a quiet channel?",
+      "Evenin' haulers, Copperhead - passin' through Dry Gulch Port. Too quiet, if you ask me.",
+      "Silver Streak here - anyone tradin' a spare mining rig tier?",
+      "How 'bout ya, truckers - Blackbeard runnin' luxury goods and lookin' for a shortcut.",
+      "Comet Chaser checkin' in - just hit Wayfarer Stop. Dockin' is a mess.",
+      "Breaker one-nine, Moonbeam - hear tell Grange Station's market is crashin'?",
+      "Bounty-runner Sunset Mercy - just finished a job. Need a bar that don't ask questions.",
+      "Neon Night checkin' in - anyone see a Moon Sugar bust at Rustwheel Station?",
+      "Ghost Rider haulin' ore through Splitrail - keep your lights on and your hand near the cutoff.",
+      "Solar Flare here - anybody seen a black market fixer at Trailerlight Yard?",
+      "How 'bout ya, rustbuckets - I'm Rattlesnake Red, haulin' water and lookin' for calm skies.",
+      "Starcruiser Seven checkin' in at Dust Creek - air tastes like pennies and bad choices.",
+      "Night Owl haulin' pilgrims to Sagebrush Ring. Y'all mind your manners out there.",
+      "Breaker breaker - Firefly askin': Truckstop Theta still pour the best rotgut in the sector?",
+      "Star Gazer checkin' in - anybody know if Holler Point's still under quarantine?",
+      "Iron Widow haulin' weapons - need a quiet lane and no surprises.",
+      "Breaker one-nine, Black Widow - passin' Lowcountry Pier. Watch for static storms.",
+      "Comet Rider here - folks still swear Dead Man's Dock is haunted?",
+      "Steel Magnolia haulin' medical crates to Longhaul Junction - clear a path, y'all.",
+      "Thunder Bolt passin' Haywire Depot. Everything's... yep. Still haywire.",
+      "Evenin' spacers - anybody hear the repo boys don't knock till a hundred grand?",
+      "Shadow King haulin' a corporate fugitive to Crosswind Relay. Channel stays clean.",
+      "Black Knight here - anyone spot a smuggler lord near Broken Axle Gate?",
+      "Stardust Queen runnin' AI cores - lookin' for a friend and a fair price.",
+      "Breaker one-nine, Iron Will - passin' Dust Creek. Security's thick and bored.",
+      "Silver Dollar here - runnin' luxury goods. Give me a tip that ain't a lie.",
+      "Comet King checkin' in at Gravelbite Hub. Food's actually decent. I'm suspicious.",
+      "Ghost Dog haulin' water - keepin' it slow and steady through the lane."
     ];
 
     // =========================================================
-    // INTRO (PROCEDURAL)
-    // Always includes: what you can do + exact starting debt.
+    // INTRO (STATIC)
     // =========================================================
-
-    const INTRO_TITLE_LINES = [
-      "DIRT POOR IN DEEP SPACE",
-      "DIRT POOR IN DEEP SPACE",
-      "DIRT POOR IN DEEP SPACE"
-    ];
-
-    const INTRO_WELCOME_LINES = [
-      "Welcome to Graveyard Orbit.",
-      "Welcome to Graveyard Orbit - where the welds are tired and the bills ain't.",
-      "Welcome to Graveyard Orbit. Try not to scrape the paint - if you even got any left.",
-      "Welcome to Graveyard Orbit. Keep your comms polite and your pockets lighter than your debt.",
-      "Welcome to Graveyard Orbit, partner. Out here, the stars don't spot you nothin'."
-    ];
-
-    const INTRO_ORBIT_SCENES = [
-      "Dock lights blink like old Christmas bulbs and half the station smells like burnt coolant.",
-      "The lane traffic is a slow parade of busted haulers and shiny ships that don't wave back.",
-      "Your scopes show scrap fields, tired beacons, and a whole lotta empty between.",
-      "Somewhere in the dark, a gate hums like a hymn you don't believe in anymore.",
-      "A station bell chimes on the hour, like it's tryin' to remind folks time still matters.",
-      "Graveyard Orbit spins quiet today - quiet enough to make you nervous.",
-      "A tug drone drifts past, patched up with tape and hope, lookin' like a cousin of your own ship."
-    ];
-
-    const INTRO_SHIP_CONDITION = [
-      "Your ship's held together with duct tape, prayer, and overdue invoices.",
-      "Your ship's a rust-colored promise that barely keeps its word.",
-      "Your ship rattles when you breathe wrong, but it still answers the throttle.",
-      "Your ship ain't pretty, but it's yours - at least until the collectors find it.",
-      "Your ship smells like hot wiring and cold coffee. That's home, I reckon."
-    ];
-
-    const INTRO_BANKER_BITS = [
-      "A real friendly banker smiled right to your face while he stapled your future to a contract.",
-      "One bad loan and a handshake you can't take back put your name in the wrong ledger.",
-      "A lender with clean teeth and mean eyes wrote you a note you ain't done payin'.",
-      "You signed papers in a back office that smelled like cologne and old money.",
-      "Some suit called it an opportunity. You called it trouble. Trouble won."
-    ];
-
-    const INTRO_JOB_HOOKS = [
-      "The honest jobs are taken. The safe lanes are bought. What's left lives in the cracks.",
-      "Out here, every paycheck's got teeth, and every shortcut's got a price.",
-      "You can make a living honest, but you can't make it fast. Not with your numbers.",
-      "There's work if you don't ask too many questions - and if you don't mind the answers.",
-      "The station bar doubles as a mission board, confession booth, and last-chance chapel."
-    ];
-
-    const INTRO_CLOSERS = [
-      "Keep flyin'. Keep hustlin'. Keep breathin'.",
-      "One day you might make it out alive - or at least make it out even.",
-      "Someday the numbers might turn your way. Today ain't that day.",
-      "Ain't no heroes in the lane - just folks tryin' to stay afloat.",
-      "Point the nose at the next job and hope the universe blinks first."
-    ];
 
     function generateIntroLines(player) {
       const debt = (player && typeof player.debt === "number") ? player.debt : STARTING_DEBT;
       const credits = (player && typeof player.credits === "number") ? player.credits : STARTING_CREDITS;
 
       const lines = [];
-      lines.push(choice(INTRO_TITLE_LINES));
+      lines.push("DIRT POOR IN DEEP SPACE");
       lines.push("");
-
-      lines.push(choice(INTRO_WELCOME_LINES));
-      lines.push("");
-
-      // Flavor block (3–5 lines)
-      const flavor = [
-        choice(INTRO_ORBIT_SCENES),
-        choice(INTRO_SHIP_CONDITION),
-        choice(INTRO_BANKER_BITS),
-        choice(INTRO_JOB_HOOKS)
-      ];
-      // Add a little extra variety occasionally
-      if (Math.random() < 0.55) flavor.push(choice(INTRO_ORBIT_SCENES));
-      if (Math.random() < 0.35) flavor.push(choice(INTRO_CLOSERS));
-
-      // De-dupe any accidental repeats while preserving order
-      const seen = new Set();
-      for (const f of flavor) {
-        if (!f) continue;
-        if (seen.has(f)) continue;
-        seen.add(f);
-        lines.push(f);
-      }
-
-      lines.push("");
+      lines.push("After a loan from a real friendly banker, you owe more than your life is worth.");
+      lines.push("There's plenty of honest work out here, but you won't be doing most of it.");
+      lines.push("Your ship is capable even if it is a little rusty.");
+      lines.push("Take jobs, mine asteroids, move cargo, gamble and buy upgrades.");
+	  lines.push("One day maybe you can make it out alive...");
+	  lines.push("");
 
       // Required info: debt + what you can do
-      lines.push(`You start with ${credits} credits and you owe ${debt} credits.`);
-      lines.push("You can:");
-      lines.push("- Visit the bar for job offers");
-      lines.push("- Trade cargo at markets");
-      lines.push("- Travel between stations (and risk trouble in the lane)");
-      lines.push("- Mine asteroids");
-      lines.push("- Buy upgrades at the outfitter");
-      lines.push("- Play Spacejack if you can afford the bet");
-      lines.push("- Save/Load your run");
+      lines.push(`You have ${credits} credits and you owe ${debt} credits.`);
+      lines.push("");
+      lines.push("Do whatever you have to or die trying.");
+
 
       lines.push("");
-      lines.push(choice(INTRO_CLOSERS));
       return lines;
     }
 
@@ -719,6 +1134,11 @@
       return Math.abs(h);
     }
 
+    function capitalize(str) {
+      if (!str) return str;
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
     function getArrivalGreeting(sys) {
       if (!sys) return null;
       const name = sys.name || "this station";
@@ -733,7 +1153,7 @@
       const sound = detail.sounds[(h >>> 16) % detail.sounds.length];
 
       // Name is included in the line so each station reads uniquely.
-      return `You ${opener} ${name}. ${sight}, and ${sound}.`;
+      return `You ${opener} ${name}. ${capitalize(sight)}, and ${sound}.`;
     }
 
     function hasMoonSugar() {
@@ -757,7 +1177,16 @@
 
     function maybeBustForMoonSugar(lines) {
       if (!hasMoonSugar()) return;
-      if (Math.random() >= MOON_SUGAR_BUST_CHANCE_ON_ARRIVAL) return;
+
+      const wealth = game.player.location.wealth;
+      let chance = MOON_SUGAR_BUST_POOR;
+      if (wealth === "average") {
+        chance = MOON_SUGAR_BUST_AVG;
+      } else if (wealth === "rich") {
+        chance = MOON_SUGAR_BUST_RICH;
+      }
+
+      if (Math.random() >= chance) return;
 
       lines.push("");
       lines.push("Blue lights wash the hull. A local deputy's voice hits the radio like a hammer: \"Hold tight, hauler. We got ourselves a sweet-tooth situation.\"");
@@ -791,7 +1220,7 @@
         for (const cargo of CARGO_TYPES) {
           let base = randInt(60, 180);
           if (cargo === "Ore") {
-            base *= 2.0;
+            base *= 1.75;
           }
           // Wealth-based baseline patterns:
           // Poor: generally cheaper, but riskier to reach.
@@ -809,21 +1238,21 @@
         }
         this.prices["Asteroid Hearts"] = 2500;
 
-        // Moon Sugar:
-        // - Only sold at poor stations (buy menu), at a fixed 250.
-        // - Every other station will still quote a buy price of 350, ensuring +40% profit.
+        // Moon Sugar prices are fixed by wealth-tier knobs
         if (wealth === "poor") {
-          this.prices[MOON_SUGAR] = MOON_SUGAR_POOR_PRICE;
+          this.prices[MOON_SUGAR] = MOON_SUGAR_BUY_PRICE;
+        } else if (wealth === "rich") {
+          this.prices[MOON_SUGAR] = MOON_SUGAR_SELL_RICH;
         } else {
-          this.prices[MOON_SUGAR] = MOON_SUGAR_OTHER_PRICE;
+          this.prices[MOON_SUGAR] = MOON_SUGAR_SELL_AVG;
         }
       }
     }
 
     class GameSystem {
-      constructor(name) {
+      constructor(name, wealth) {
         this.name = name;
-        this.wealth = choice(WEALTH_LEVELS);
+        this.wealth = wealth;
         this.market = new Market(this.wealth);
       }
     }
@@ -865,19 +1294,145 @@
     const outputEl = document.getElementById("output");
     const commandEl = document.getElementById("command");
 
+    const menuPanelEl = document.getElementById("menu-panel");
+    const menuGridEl = document.getElementById("menu-grid");
+    const toggleMenuBtn = document.getElementById("toggle-menu-btn");
+    const toggleThemeBtn = document.getElementById("toggle-theme-btn");
+
     let autoScrollEnabled = false;
+    let menuVisiblePreference = false;
+
+    // =========================================================
+    // ACCESSIBLE CONTEXT MENUS (TOUCH + MOUSE)
+    // =========================================================
+
+    function updateMenuDisplay() {
+      if (!menuPanelEl) return;
+      const hasContent = menuGridEl && menuGridEl.children.length > 0;
+      const shouldShow = hasContent && menuVisiblePreference;
+      menuPanelEl.hidden = !shouldShow;
+      menuPanelEl.setAttribute("aria-hidden", String(!shouldShow));
+      if (toggleMenuBtn) {
+        toggleMenuBtn.textContent = menuVisiblePreference ? "Hide Buttons" : "Show Buttons";
+        toggleMenuBtn.setAttribute("aria-pressed", String(menuVisiblePreference));
+      }
+      scrollToBottom();
+    }
+
+    if (toggleMenuBtn) {
+      toggleMenuBtn.addEventListener("click", () => {
+        menuVisiblePreference = !menuVisiblePreference;
+        updateMenuDisplay();
+      });
+    }
+
+    if (toggleThemeBtn) {
+      toggleThemeBtn.addEventListener("click", () => {
+        const isLightActive = document.body.classList.toggle("light-mode");
+        toggleThemeBtn.textContent = isLightActive ? "Dark" : "Light";
+        localStorage.setItem("dpids_theme", isLightActive ? "light" : "dark");
+      });
+
+      if (localStorage.getItem("dpids_theme") === "light") {
+        document.body.classList.add("light-mode");
+        toggleThemeBtn.textContent = "Dark";
+      }
+    }
+
+    function triggerFeedback(cmd) {
+      // Haptic: 15ms thump on supported devices
+      if ("vibrate" in navigator) {
+        try { navigator.vibrate(15); } catch (e) {}
+      }
+
+      // Visual Flash: find the button and toggle class
+      const btn = menuGridEl.querySelector(`[data-cmd="${cmd}"]`);
+      if (btn) {
+        btn.classList.add("active-flash");
+        setTimeout(() => btn.classList.remove("active-flash"), 100);
+      }
+    }
+
+    function setContextMenu(options, ariaLabel = "Menu options") {
+      if (!menuPanelEl || !menuGridEl) return;
+      if (!Array.isArray(options) || options.length === 0) {
+        clearContextMenu();
+        return;
+      }
+      menuPanelEl.setAttribute("aria-label", ariaLabel);
+      menuGridEl.setAttribute("aria-label", ariaLabel);
+      menuGridEl.innerHTML = "";
+
+      const posMap = {
+        "1": 1, "2": 2, "3": 3,
+        "4": 4, "5": 5, "6": 6,
+        "7": 7, "8": 8, "9": 9,
+        "0": 11
+      };
+
+      for (const opt of options) {
+        const cmd = String(opt.cmd);
+        const pos = posMap[cmd];
+        if (!pos) continue;
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "menu-btn";
+        btn.style.gridColumn = ((pos - 1) % 3) + 1;
+        btn.style.gridRow = Math.floor((pos - 1) / 3) + 1;
+        
+        btn.dataset.cmd = cmd;
+        const label = String(opt.label || "");
+        btn.setAttribute("aria-label", `${cmd}. ${label}`);
+        btn.textContent = cmd;
+        
+        btn.addEventListener("click", () => {
+          triggerFeedback(cmd);
+          ensureMusicPlaying();
+          processCommand(cmd);
+        });
+        menuGridEl.appendChild(btn);
+      }
+      updateMenuDisplay();
+    }
+
+    function clearContextMenu() {
+      if (!menuPanelEl || !menuGridEl) return;
+      menuGridEl.innerHTML = "";
+      updateMenuDisplay();
+    }
+
+    function mainMenuOptions() {
+      return [
+        { cmd: "1", label: "Visit bar" },
+        { cmd: "2", label: "Trade" },
+        { cmd: "3", label: "Travel" },
+        { cmd: "4", label: "Mine asteroids" },
+        { cmd: "5", label: "Pay debt" },
+        { cmd: "6", label: "Outfitter" },
+        { cmd: "7", label: "Spacejack" },
+        { cmd: "8", label: "Save" },
+        { cmd: "9", label: "Load" },
+        { cmd: "0", label: "Quit" }
+      ];
+    }
+
+    function scrollToBottom() {
+      if (!autoScrollEnabled) return;
+      // Use both requestAnimationFrame and a direct scroll for maximum reliability
+      requestAnimationFrame(() => {
+        outputEl.scrollTop = outputEl.scrollHeight;
+      });
+      outputEl.scrollTop = outputEl.scrollHeight;
+    }
+
+    // Fail-safe: Scroll to bottom whenever content changes
+    const scrollObserver = new MutationObserver(() => scrollToBottom());
+    scrollObserver.observe(outputEl, { childList: true, characterData: true, subtree: true });
 
     function appendOutput(text) {
       outputEl.textContent += text + "\n";
-      if (!autoScrollEnabled) return;
-
-      setTimeout(() => {
-        outputEl.scrollTop = outputEl.scrollHeight;
-        window.scrollTo({
-          top: document.body.scrollHeight,
-          behavior: "auto"
-        });
-      }, 0);
+      scrollToBottom();
     }
 
     function clearOutput() {
@@ -950,6 +1505,21 @@
     // GAME LOGIC
     // =========================================================
 
+    function showRunEndedMenu(leadLine) {
+      if (leadLine) {
+        appendOutput(leadLine);
+      }
+      appendOutput("\n--- RUN ENDED ---");
+      appendOutput("Choose an option:");
+      appendOutput("1. Start a new run");
+      appendOutput("2. Load a saved run");
+      game.mode = "gameOver";
+      setContextMenu([
+        { cmd: "1", label: "Start a new run" },
+        { cmd: "2", label: "Load a saved run" }
+      ], "Run ended options");
+    }
+
     function handleDebtClearedIfNeeded(lines) {
       if (!game.player) return;
 
@@ -965,11 +1535,9 @@
           const msg = [
             "",
             "The ledger ticks down to 0.",
-            "No collectors on your tail. No interest compounding in the dark.",
-            "You wait for the relief to hit - and instead you feel the vastness of the lane ahead of you.",
-            "The journey has just begun.",
-            "",
-            `Word travels fast. Piracy settles into a steady ${Math.floor(PIRACY_FIXED_RATE * 100)}%.`,
+            "The hard part is over: no collectors on your tail, no interest compounding in the dark.",
+            "But a cleared balance ain't the same as bein' free.",
+            "True freedom is having enough stacked that the lane can't tell you what to do. You still dream of that far away someday when you can finally pick your own horizon.",
             ""
           ];
           if (Array.isArray(lines)) {
@@ -1088,7 +1656,30 @@
       baseReward = Math.floor(baseReward * missionPayoutMultiplier(mtype));
 
       // 4c) Global payout multiplier
-      const reward = Math.floor(baseReward * CREDIT_MULTIPLIER);
+      let reward = Math.floor(baseReward * CREDIT_MULTIPLIER);
+
+      // 4d) Apply upgrade payout bonuses (10% per tier of matching upgrade)
+      const ship = game.player.ship;
+      let payoutTier = 0;
+      if (mtype === "cargo") payoutTier = ship.smuggler_hold || 0;
+      else if (mtype === "passenger") payoutTier = ship.luxury_cabin || 0;
+      else if (mtype === "bounty") payoutTier = ship.combat_laser || 0;
+      else if (mtype === "mining") payoutTier = ship.mining_laser || 0;
+
+      if (payoutTier > 0) {
+        reward = Math.floor(reward * (1 + payoutTier * UPGRADE_PAYOUT_BONUS_PER_TIER));
+      }
+
+      // 4e) Enforce minimum payout (randomized range)
+      const floor = randInt(MIN_MISSION_PAYOUT_MIN, MIN_MISSION_PAYOUT_MAX);
+      reward = Math.max(reward, floor);
+
+      // 4f) Apply flat per-upgrade credit bonus for combat/passenger
+      if (mtype === "bounty") {
+        reward += (ship.combat_laser || 0) * 150;
+      } else if (mtype === "passenger") {
+        reward += (ship.luxury_cabin || 0) * 150;
+      }
 
       // 5) Apply upgrades to success chance (not payout)
       const bonus = upgradeBonusForType(mtype);
@@ -1194,8 +1785,7 @@
         lines.push("Things go sideways, but you drag something worth selling out of the wreck.");
         lines.push(`You scrape together ${partial} credits.`);
       } else {
-        let loss = Math.floor(mission.reward * randFloat(0.30, 0.50));
-        loss = Math.max(loss, 150);
+        const loss = Math.floor(mission.reward * FAILURE_LOSS_PERCENT);
         game.player.credits -= loss;
         lines.push(FAILURE_TEXT[Math.floor(Math.random() * FAILURE_TEXT.length)]);
         lines.push(`Mission fails. You eat ${loss} credits in costs and damages.`);
@@ -1212,8 +1802,7 @@
       maybeTriggerPirates("rocks", lines);
 
       const miningTier = game.player.ship.mining_laser || 0;
-      let successThresh = MINING_BASE_SUCCESS + miningTier * MINING_SUCCESS_PER_TIER;
-      successThresh = Math.min(successThresh, MINING_MAX_SUCCESS);
+      let successThresh = MINING_BASE_SUCCESS + miningTier * MINING_SUCCESS_PER_TIER; successThresh = Math.min(successThresh, MINING_MAX_SUCCESS);
 
       const roll = Math.random();
 
@@ -1256,6 +1845,7 @@
       const lines = [];
       lines.push("--- STATUS ---");
       lines.push(`Location: ${p.location.name}`);
+      lines.push(`State: ${formatWealthLabel(p.location.wealth)}`);
       lines.push(`Credits: ${p.credits}`);
       lines.push(`Debt: ${p.debt}`);
       lines.push(`Cargo hold: ${getTotalCargoUnits()}/${getCargoCapacity()} units`);
@@ -1280,19 +1870,18 @@
       appendOutput("7. Spacejack");
       appendOutput("8. Save");
       appendOutput("9. Load");
-      appendOutput("10. Quit");
+      appendOutput("0. Quit");
       game.mode = "mainMenu";
+      setContextMenu(mainMenuOptions(), "Main menu options");
     }
 
     function checkVictory() {
       if (game.player.debt <= 0 && game.player.credits >= 100000) {
         appendOutput("\nFor once, the numbers are on your side.");
-        appendOutput("No debt. Six figures in the account. A ship that still mostly flies straight.");
-        appendOutput("You sign the last of the papers, sell off what you don't need, and point the nose at a quiet star.");
-        appendOutput("Out here, that's as close to a happy ending as anyone gets.");
-        appendOutput("You ride off into the sunset.");
-        game.mode = "gameOver";
-        appendOutput("Ending reached. Type 'new' to start another run, or 'load' to revisit a saved one.");
+        appendOutput(
+          "You sit on the cargo ramp with a tin cup of coffee, boots dangling over the black, and watch the station lights blink like fireflies in a mason jar. The debt's gone, the accounts are fat enough to make even the clean-suited bankers talk sweet, and your ship - ugly as a fence post and twice as stubborn - is finally yours in more than name. You sign the last of the paperwork with a borrowed pen, sell off the extra junk, and feel that quiet, porch-swing kind of relief settle in your bones. Out here, freedom ain't a parade or a medal - it's waking up without a schedule, without a threat, and without somebody else's hand in your pocket. You pick a star that ain't on any route map, tip your hat to Graveyard Orbit, and ease the throttle forward like you're pullin' out onto a long country road at dawn."
+        );
+        showRunEndedMenu("");
       }
     }
 
@@ -1339,8 +1928,7 @@
         appendOutput("A tow clamp bites the hull. Your controls go dead like somebody pulled the soul out of the ship.");
         appendOutput("You hear boots on the gangway, then cold hands on your collar.");
         appendOutput("They seize your ship mid-flight and throw you out the airlock.");
-        game.mode = "gameOver";
-        appendOutput("Game over. Type 'new' to start a new run, or 'load' to load a save.");
+        showRunEndedMenu("Game over.");
         return;
       }
     }
@@ -1376,7 +1964,9 @@
         const mi = missions[indexed[i].idx];
         if (mi.reward >= prevReward) {
           // Strong clamp so higher-chance jobs sit clearly below
-          mi.reward = Math.max(Math.floor(prevReward * 0.8), 50);
+          // Floor uses randomized range logic consistent with generation
+          const floor = randInt(MIN_MISSION_PAYOUT_MIN, MIN_MISSION_PAYOUT_MAX);
+          mi.reward = Math.max(Math.floor(prevReward * 0.8), floor);
         }
         prevReward = mi.reward;
       }
@@ -1409,13 +1999,32 @@
       // Enforce strong local risk–reward balance on the board
       adjustBoardRewards(game.pendingMissions);
 
+      // Final modifier: flat credit bonus per tier for combat and passenger missions
+      const ship = game.player.ship;
+      for (const m of game.pendingMissions) {
+        if (m.type === "bounty") {
+          m.reward += (ship.combat_laser || 0) * UPGRADE_MISSION_PAYOUT_FLAT;
+        } else if (m.type === "passenger") {
+          m.reward += (ship.luxury_cabin || 0) * UPGRADE_MISSION_PAYOUT_FLAT;
+        }
+      }
+
       appendOutput("\n--- JOB BOARD ---");
       describeJob(1, game.pendingMissions[0]);
       describeJob(2, game.pendingMissions[1]);
       describeJob(3, game.pendingMissions[2]);
       describeJob(4, game.pendingMissions[3]);
-      appendOutput("5. Walk away");
+      appendOutput("0. Walk away");
       game.mode = "barConfirm";
+
+      // Context buttons for the job board
+      setContextMenu([
+        { cmd: "1", label: `${capitalize(game.pendingMissions[0].type)} Job` },
+        { cmd: "2", label: `${capitalize(game.pendingMissions[1].type)} Job` },
+        { cmd: "3", label: `${capitalize(game.pendingMissions[2].type)} Job` },
+        { cmd: "4", label: `${capitalize(game.pendingMissions[3].type)} Job` },
+        { cmd: "0", label: "Walk away" }
+      ], "Job board options");
     }
 
     function showTravelOptions() {
@@ -1428,6 +2037,13 @@
       });
       appendOutput("0. Cancel travel");
       game.mode = "travel";
+
+      const travelBtns = destinations.map((sys, idx) => ({
+        cmd: String(idx + 1),
+        label: `${sys.name} - ${formatWealthLabel(sys.wealth)}`
+      }));
+      travelBtns.push({ cmd: "0", label: "Cancel travel" });
+      setContextMenu(travelBtns, "Travel options");
     }
 
     function doTravel(index) {
@@ -1469,20 +2085,7 @@
 
       // Arrive
       game.player.location = destination;
-      destination.market.generatePrices(destination.wealth);
-
-      // If traveling from a poor station to a rich station with cargo,
-      // bump the prices of items currently in hold by 15% at the rich market.
-      if (origin.wealth === "poor" && destination.wealth === "rich" && getTotalCargoUnits() > 0) {
-        const cargoNames = Object.keys(game.player.cargo).filter(
-          name => (game.player.cargo[name] || 0) > 0
-        );
-        cargoNames.forEach(name => {
-          if (destination.market.prices[name]) {
-            destination.market.prices[name] = Math.floor(destination.market.prices[name] * 1.15);
-          }
-        });
-      }
+      // Removed regeneratePrices during travel to keep wealth ties fixed
 
       lines.push(`You drop back into realspace at ${destination.name}.`);
 
@@ -1526,12 +2129,19 @@
       appendOutput("1. Buy");
       appendOutput("2. Sell");
       appendOutput("3. Sell all cargo");
-      appendOutput("4. Return to main menu");
+      appendOutput("0. Return to main menu");
       tradeState.phase = "root";
       tradeState.action = null;
       tradeState.list = [];
       tradeState.commodity = null;
       game.mode = "trade";
+
+      setContextMenu([
+        { cmd: "1", label: "Buy" },
+        { cmd: "2", label: "Sell" },
+        { cmd: "3", label: "Sell all cargo" },
+        { cmd: "0", label: "Return to main menu" }
+      ], "Market options");
     }
 
     function enterBuyCommodityPhase() {
@@ -1560,6 +2170,13 @@
         appendOutput(`${idx + 1}. ${cargo} - ${price} credits per unit`);
       });
       appendOutput("0. Return to market menu");
+
+      const btns = list.map((cargo, idx) => ({
+        cmd: String(idx + 1),
+        label: `${cargo}`
+      }));
+      btns.push({ cmd: "0", label: "Return to market menu" });
+      setContextMenu(btns, "Buy: choose a commodity");
     }
 
     function enterSellCommodityPhase() {
@@ -1585,6 +2202,13 @@
         appendOutput(`${idx + 1}. ${cargo} - ${sellPrice} credits per unit`);
       });
       appendOutput("0. Return to market menu");
+
+      const btns = list.map((cargo, idx) => ({
+        cmd: String(idx + 1),
+        label: `${cargo}`
+      }));
+      btns.push({ cmd: "0", label: "Return to market menu" });
+      setContextMenu(btns, "Sell: choose a commodity");
     }
 
     function enterAmountPhase() {
@@ -1600,15 +2224,27 @@
         appendOutput(`Buying ${cargoName} at ${basePrice} credits per unit.`);
         appendOutput(`You can afford up to ${canAfford}. Cargo space available: ${canFit}.`);
         appendOutput(`Max you can buy right now: ${maxBuy}.`);
-        appendOutput("Enter amount to buy. 0 to cancel.");
+        appendOutput("");
+        appendOutput("1. Buy all possible");
+        appendOutput("0. Cancel");
+        appendOutput("\nOr enter specific amount below:");
       } else {
         const have = game.player.cargo[cargoName] || 0;
         const sellPrice = Math.floor(basePrice * commoditySellMultiplier(cargoName));
         appendOutput(`Selling ${cargoName} at ${sellPrice} credits per unit. You have ${have}.`);
-        appendOutput("Enter amount to sell. 0 to cancel.");
+        appendOutput("");
+        appendOutput("1. Sell all owned");
+        appendOutput("0. Cancel");
+        appendOutput("\nOr enter specific amount below:");
       }
 
       tradeState.phase = "amount";
+
+      // Amount entry is free-form (retain the text field), but always provide a cancel button.
+      setContextMenu([
+        { cmd: "1", label: tradeState.action === "buy" ? "Buy All Possible" : "Sell All Owned" },
+        { cmd: "0", label: "Cancel" }
+      ], "Amount entry options");
     }
 
     function sellAllCargo() {
@@ -1651,10 +2287,10 @@
           } else if (lower === "3") {
             sellAllCargo();
             showTradeHelp();
-          } else if (lower === "4") {
+          } else if (lower === "0") {
             enterMainLoopTurn();
           } else {
-            appendOutput("Enter 1 to buy, 2 to sell, 3 to sell all, or 4 to return to main menu.");
+            appendOutput("Enter 1 to buy, 2 to sell, 3 to sell all, or 0 to return to main menu.");
           }
           break;
         }
@@ -1680,7 +2316,21 @@
         }
 
         case "amount": {
-          const amt = parseInt(cmd, 10);
+          const market = game.player.location.market;
+          const cargoName = tradeState.commodity;
+          const basePrice = market.prices[cargoName];
+          let amt = parseInt(cmd, 10);
+
+          if (cmd.trim() === "1") {
+            if (tradeState.action === "buy") {
+              const canAfford = basePrice > 0 ? Math.floor(game.player.credits / basePrice) : 0;
+              const canFit = getAvailableCargoSpace();
+              amt = Math.max(0, Math.min(canAfford, canFit));
+            } else {
+              amt = game.player.cargo[cargoName] || 0;
+            }
+          }
+
           if (Number.isNaN(amt) || amt < 0) {
             appendOutput("Enter a non-negative number.");
             return;
@@ -1689,10 +2339,6 @@
             showTradeHelp();
             return;
           }
-
-          const cargoName = tradeState.commodity;
-          const market = game.player.location.market;
-          const basePrice = market.prices[cargoName];
 
           if (tradeState.action === "buy") {
             const canAfford = basePrice > 0 ? Math.floor(game.player.credits / basePrice) : 0;
@@ -1757,345 +2403,354 @@
       }
     }
 
-    // // =========================================================
-// SPACEJACK (SIMPLIFIED BLACKJACK, 50% WIN RATE)
-// =========================================================
+    // =========================================================
+    // SPACEJACK (SIMPLIFIED BLACKJACK, 50% WIN RATE)
+    // =========================================================
 
-function spacejackCardFromValue(v) {
-  if (v === 11) return { rank: "A", value: 11 };
-  if (v === 10) return { rank: choice(["10", "J", "Q", "K"]), value: 10 };
-  return { rank: String(v), value: v };
-}
-
-function spacejackHandTotal(hand) {
-  let total = 0;
-  let aces = 0;
-  for (const c of hand) {
-    total += c.value;
-    if (c.rank === "A") aces += 1;
-  }
-  while (total > 21 && aces > 0) {
-    total -= 10;
-    aces -= 1;
-  }
-  return total;
-}
-
-function spacejackHandString(hand) {
-  return hand.map(c => c.rank).join(" ");
-}
-
-function spacejackMakeTwoCardHand(minTotal, maxTotal, disallow21 = true) {
-  for (let tries = 0; tries < 500; tries++) {
-    const v1 = randInt(2, 11);
-    const v2 = randInt(2, 11);
-    const hand = [spacejackCardFromValue(v1), spacejackCardFromValue(v2)];
-    const t = spacejackHandTotal(hand);
-    if (t < minTotal || t > maxTotal) continue;
-    if (disallow21 && t === 21) continue;
-    return hand;
-  }
-  return [spacejackCardFromValue(10), spacejackCardFromValue(7)];
-}
-
-function spacejackRiggedPlayerHitCard(currentTotal, rigOutcome) {
-  if (rigOutcome === "win") {
-    const options = [];
-    for (let v = 2; v <= 11; v++) {
-      const newTotal = currentTotal + v;
-      if (newTotal <= 21) options.push(v);
-    }
-    if (!options.length) return spacejackCardFromValue(2);
-
-    options.sort((a, b) => a - b);
-    let pick;
-    if (currentTotal <= 11) {
-      pick = options[Math.min(options.length - 1, randInt(Math.floor(options.length / 2), options.length - 1))];
-    } else if (currentTotal <= 16) {
-      pick = options[randInt(0, options.length - 1)];
-    } else {
-      pick = options[randInt(0, Math.min(options.length - 1, 2))];
-    }
-    return spacejackCardFromValue(pick);
-  }
-
-  // rigOutcome === "lose"
-  const bustLikelihood = currentTotal >= 16 ? 0.65 : (currentTotal >= 13 ? 0.35 : 0.15);
-
-  if (Math.random() < bustLikelihood) {
-    const bustOptions = [];
-    for (let v = 2; v <= 11; v++) {
-      if (currentTotal + v > 21) bustOptions.push(v);
-    }
-    if (bustOptions.length) return spacejackCardFromValue(choice(bustOptions));
-  }
-
-  const safeOptions = [];
-  for (let v = 2; v <= 11; v++) {
-    const newTotal = currentTotal + v;
-    if (newTotal <= 20) safeOptions.push(v);
-  }
-  if (!safeOptions.length) {
-    const bustOptions = [];
-    for (let v = 2; v <= 11; v++) {
-      if (currentTotal + v > 21) bustOptions.push(v);
-    }
-    return spacejackCardFromValue(bustOptions.length ? choice(bustOptions) : 11);
-  }
-
-  safeOptions.sort((a, b) => a - b);
-  let pick;
-  if (currentTotal <= 12) {
-    pick = safeOptions[randInt(Math.floor(safeOptions.length / 2), safeOptions.length - 1)];
-  } else {
-    pick = safeOptions[randInt(0, safeOptions.length - 1)];
-  }
-  return spacejackCardFromValue(pick);
-}
-
-function spacejackFindSeqToTarget(start, target, depthLimit = 6) {
-  const values = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-
-  function dfs(sum, depth, path) {
-    if (sum === target) return path;
-    if (depth >= depthLimit) return null;
-    if (sum > target) return null;
-
-    if (sum >= 17 && sum !== target) return null;
-
-    const shuffled = values.slice();
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    function spacejackCardFromValue(v) {
+      if (v === 11) return { rank: "A", value: 11 };
+      if (v === 10) return { rank: choice(["10", "J", "Q", "K"]), value: 10 };
+      return { rank: String(v), value: v };
     }
 
-    for (const v of shuffled) {
-      const next = sum + v;
-      if (next > target) continue;
-      if (next >= 17 && next !== target) continue;
-
-      const res = dfs(next, depth + 1, path.concat([v]));
-      if (res) return res;
-    }
-    return null;
-  }
-
-  return dfs(start, 0, []);
-}
-
-function spacejackBuildDealerHand(upCard, playerTotal, rigOutcome) {
-  // const upValue = upCard.value; // unused but harmless if you keep it
-
-  let targetType = "target";
-  let targetTotal = null;
-
-  if (rigOutcome === "win") {
-    if (playerTotal <= 17) {
-      targetType = "bust";
-    } else {
-      targetType = "target";
-      targetTotal = randInt(17, playerTotal - 1);
-    }
-  } else {
-    targetType = "target";
-    const min = Math.max(17, playerTotal + 1);
-    targetTotal = randInt(min, 21);
-  }
-
-  for (let tries = 0; tries < 600; tries++) {
-    const hand = [upCard];
-
-    const downValue = randInt(2, 11);
-    hand.push(spacejackCardFromValue(downValue));
-
-    let total = spacejackHandTotal(hand);
-
-    if (targetType === "bust") {
-      while (total < SPACEJACK_DEALER_STAND) {
-        const v = randInt(2, 11);
-        hand.push(spacejackCardFromValue(v));
-        total = spacejackHandTotal(hand);
+    function spacejackHandTotal(hand) {
+      let total = 0;
+      let aces = 0;
+      for (const c of hand) {
+        total += c.value;
+        if (c.rank === "A") aces += 1;
       }
-      if (total <= 21) {
+      while (total > 21 && aces > 0) {
+        total -= 10;
+        aces -= 1;
+      }
+      return total;
+    }
+
+    function spacejackHandString(hand) {
+      return hand.map(c => c.rank).join(" ");
+    }
+
+    function spacejackMakeTwoCardHand(minTotal, maxTotal, disallow21 = true) {
+      for (let tries = 0; tries < 500; tries++) {
+        const v1 = randInt(2, 11);
+        const v2 = randInt(2, 11);
+        const hand = [spacejackCardFromValue(v1), spacejackCardFromValue(v2)];
+        const t = spacejackHandTotal(hand);
+        if (t < minTotal || t > maxTotal) continue;
+        if (disallow21 && t === 21) continue;
+        return hand;
+      }
+      return [spacejackCardFromValue(10), spacejackCardFromValue(7)];
+    }
+
+    function spacejackRiggedPlayerHitCard(currentTotal, rigOutcome) {
+      if (rigOutcome === "win") {
+        const options = [];
+        for (let v = 2; v <= 11; v++) {
+          const newTotal = currentTotal + v;
+          if (newTotal <= 21) options.push(v);
+        }
+        if (!options.length) return spacejackCardFromValue(2);
+
+        options.sort((a, b) => a - b);
+        let pick;
+        if (currentTotal <= 11) {
+          pick = options[Math.min(options.length - 1, randInt(Math.floor(options.length / 2), options.length - 1))];
+        } else if (currentTotal <= 16) {
+          pick = options[randInt(0, options.length - 1)];
+        } else {
+          pick = options[randInt(0, Math.min(options.length - 1, 2))];
+        }
+        return spacejackCardFromValue(pick);
+      }
+
+      // rigOutcome === "lose"
+      const bustLikelihood = currentTotal >= 16 ? 0.65 : (currentTotal >= 13 ? 0.35 : 0.15);
+
+      if (Math.random() < bustLikelihood) {
         const bustOptions = [];
         for (let v = 2; v <= 11; v++) {
-          if (total + v > 21) bustOptions.push(v);
+          if (currentTotal + v > 21) bustOptions.push(v);
         }
-        const v = bustOptions.length ? choice(bustOptions) : 11;
-        hand.push(spacejackCardFromValue(v));
-        total = spacejackHandTotal(hand);
+        if (bustOptions.length) return spacejackCardFromValue(choice(bustOptions));
       }
-      if (total > 21) {
-        return { hand, dealerTotal: total };
+
+      const safeOptions = [];
+      for (let v = 2; v <= 11; v++) {
+        const newTotal = currentTotal + v;
+        if (newTotal <= 20) safeOptions.push(v);
       }
-      continue;
+      if (!safeOptions.length) {
+        const bustOptions = [];
+        for (let v = 2; v <= 11; v++) {
+          if (currentTotal + v > 21) bustOptions.push(v);
+        }
+        return spacejackCardFromValue(bustOptions.length ? choice(bustOptions) : 11);
+      }
+
+      safeOptions.sort((a, b) => a - b);
+      let pick;
+      if (currentTotal <= 12) {
+        pick = safeOptions[randInt(Math.floor(safeOptions.length / 2), safeOptions.length - 1)];
+      } else {
+        pick = safeOptions[randInt(0, safeOptions.length - 1)];
+      }
+      return spacejackCardFromValue(pick);
     }
 
-    if (targetTotal == null) continue;
-    if (total > targetTotal) continue;
+    function spacejackFindSeqToTarget(start, target, depthLimit = 6) {
+      const values = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
-    if (total === targetTotal) {
-      if (total >= SPACEJACK_DEALER_STAND) return { hand, dealerTotal: total };
-      continue;
+      function dfs(sum, depth, path) {
+        if (sum === target) return path;
+        if (depth >= depthLimit) return null;
+        if (sum > target) return null;
+
+        if (sum >= 17 && sum !== target) return null;
+
+        const shuffled = values.slice();
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+
+        for (const v of shuffled) {
+          const next = sum + v;
+          if (next > target) continue;
+          if (next >= 17 && next !== target) continue;
+
+          const res = dfs(next, depth + 1, path.concat([v]));
+          if (res) return res;
+        }
+        return null;
+      }
+
+      return dfs(start, 0, []);
     }
 
-    if (total >= SPACEJACK_DEALER_STAND) continue;
+    function spacejackBuildDealerHand(upCard, playerTotal, rigOutcome) {
+      let targetType = "target";
+      let targetTotal = null;
 
-    const seq = spacejackFindSeqToTarget(total, targetTotal, 6);
-    if (!seq) continue;
+      if (rigOutcome === "win") {
+        if (playerTotal <= 17) {
+          targetType = "bust";
+        } else {
+          targetType = "target";
+          targetTotal = randInt(17, playerTotal - 1);
+        }
+      } else {
+        targetType = "target";
+        const min = Math.max(17, playerTotal + 1);
+        targetTotal = randInt(min, 21);
+      }
 
-    for (const v of seq) {
-      hand.push(spacejackCardFromValue(v));
-      total = spacejackHandTotal(hand);
+      for (let tries = 0; tries < 600; tries++) {
+        const hand = [upCard];
+
+        const downValue = randInt(2, 11);
+        hand.push(spacejackCardFromValue(downValue));
+
+        let total = spacejackHandTotal(hand);
+
+        if (targetType === "bust") {
+          while (total < SPACEJACK_DEALER_STAND) {
+            const v = randInt(2, 11);
+            hand.push(spacejackCardFromValue(v));
+            total = spacejackHandTotal(hand);
+          }
+          if (total <= 21) {
+            const bustOptions = [];
+            for (let v = 2; v <= 11; v++) {
+              if (total + v > 21) bustOptions.push(v);
+            }
+            const v = bustOptions.length ? choice(bustOptions) : 11;
+            hand.push(spacejackCardFromValue(v));
+            total = spacejackHandTotal(hand);
+          }
+          if (total > 21) {
+            return { hand, dealerTotal: total };
+          }
+          continue;
+        }
+
+        if (targetTotal == null) continue;
+        if (total > targetTotal) continue;
+
+        if (total === targetTotal) {
+          if (total >= SPACEJACK_DEALER_STAND) return { hand, dealerTotal: total };
+          continue;
+        }
+
+        if (total >= SPACEJACK_DEALER_STAND) continue;
+
+        const seq = spacejackFindSeqToTarget(total, targetTotal, 6);
+        if (!seq) continue;
+
+        for (const v of seq) {
+          hand.push(spacejackCardFromValue(v));
+          total = spacejackHandTotal(hand);
+        }
+
+        if (total === targetTotal && total >= SPACEJACK_DEALER_STAND) {
+          return { hand, dealerTotal: total };
+        }
+      }
+
+      // Fallback: make dealer bust (safe to avoid "no resolution")
+      const fallbackHand = [upCard, spacejackCardFromValue(10), spacejackCardFromValue(10)];
+      return { hand: fallbackHand, dealerTotal: spacejackHandTotal(fallbackHand) };
     }
 
-    if (total === targetTotal && total >= SPACEJACK_DEALER_STAND) {
-      return { hand, dealerTotal: total };
+    function startSpacejack() {
+      if (game.player.credits < SPACEJACK_BET) {
+        const lines = [];
+        lines.push("");
+        lines.push(`You need ${SPACEJACK_BET} credits to play Spacejack.`);
+        enterMainLoopTurn(lines);
+        return;
+      }
+
+      // Deduct bet up front
+      game.player.credits -= SPACEJACK_BET;
+
+      // Decide outcome FIRST
+      const rigOutcome = (Math.random() < SPACEJACK_WIN_RATE) ? "win" : "lose";
+
+      // Avoid instant naturals; keep it consistent and fast.
+      const playerHand = spacejackMakeTwoCardHand(12, 19, true);
+
+      // Dealer shows one card; the rest is built on stand.
+      const dealerUp = spacejackCardFromValue(randInt(2, 11));
+
+      game.spacejack = {
+        bet: SPACEJACK_BET,
+        rigOutcome,
+        playerHand,
+        dealerUp,
+        finished: false
+      };
+
+      appendOutput("");
+      appendOutput("--- SPACEJACK ---");
+      appendOutput(`Bet: ${SPACEJACK_BET} credits`);
+      appendOutput(`Winnings on a win: +${SPACEJACK_WINNINGS} credits (net profit)`);
+      appendOutput(`Total returned on a win: +${SPACEJACK_BET + SPACEJACK_WINNINGS} credits`);
+      appendOutput("Rules: hit or stand. Dealer stands on 17. Aces count as 1 or 11.");
+      appendOutput("");
+      appendOutput("Choose:");
+      appendOutput("1. Hit");
+      appendOutput("2. Stand");
+      appendOutput("");
+      appendOutput(`Your hand: ${spacejackHandString(playerHand)} (total ${spacejackHandTotal(playerHand)})`);
+      appendOutput(`Dealer shows: ${dealerUp.rank} (?)`);
+
+      game.mode = "spacejack";
+
+      setContextMenu([
+        { cmd: "1", label: "Hit" },
+        { cmd: "2", label: "Stand" }
+      ], "Spacejack options");
     }
-  }
 
-  // Fallback: make dealer bust (safe to avoid "no resolution")
-  const fallbackHand = [upCard, spacejackCardFromValue(10), spacejackCardFromValue(10)];
-  return { hand: fallbackHand, dealerTotal: spacejackHandTotal(fallbackHand) };
-}
+    function settleSpacejackWin(lines, bet) {
+      // Bet was already deducted when the game started.
+      // On win: return stake + winnings => net profit = SPACEJACK_WINNINGS.
+      const payout = bet + SPACEJACK_WINNINGS;
+      game.player.credits += payout;
+      lines.push(`You win. Winnings: +${SPACEJACK_WINNINGS} credits.`);
+      lines.push(`Paid out: +${payout} credits total (stake + winnings).`);
+    }
 
-function startSpacejack() {
-  if (game.player.credits < SPACEJACK_BET) {
-    const lines = [];
-    lines.push("");
-    lines.push(`You need ${SPACEJACK_BET} credits to play Spacejack.`);
-    enterMainLoopTurn(lines);
-    return;
-  }
+    function settleSpacejackLose(lines) {
+      lines.push("You lose.");
+    }
 
-  // Deduct bet up front
-  game.player.credits -= SPACEJACK_BET;
-
-  // Decide outcome FIRST: exact 50/50 in the long run.
-  const rigOutcome = (Math.random() < 0.5) ? "win" : "lose";
-
-  // Avoid instant naturals; keep it consistent and fast.
-  const playerHand = spacejackMakeTwoCardHand(12, 19, true);
-
-  // Dealer shows one card; the rest is built on stand.
-  const dealerUp = spacejackCardFromValue(randInt(2, 11));
-
-  game.spacejack = {
-    bet: SPACEJACK_BET,
-    rigOutcome,
-    playerHand,
-    dealerUp,
-    finished: false
-  };
-
-  appendOutput("");
-  appendOutput("--- SPACEJACK ---");
-  appendOutput(`Bet: ${SPACEJACK_BET} credits`);
-  appendOutput(`Winnings on a win: +${SPACEJACK_WINNINGS} credits (net profit)`);
-  appendOutput(`Total returned on a win: +${SPACEJACK_BET + SPACEJACK_WINNINGS} credits`);
-  appendOutput("Rules: hit or stand. Dealer stands on 17. Aces count as 1 or 11.");
-  appendOutput("");
-  appendOutput("Choose:");
-  appendOutput("1. Hit");
-  appendOutput("2. Stand");
-  appendOutput("");
-  appendOutput(`Your hand: ${spacejackHandString(playerHand)} (total ${spacejackHandTotal(playerHand)})`);
-  appendOutput(`Dealer shows: ${dealerUp.rank} (?)`);
-
-  game.mode = "spacejack";
-}
-
-function settleSpacejackWin(lines, bet) {
-  // Bet was already deducted when the game started.
-  // On win: return stake + winnings => net profit = SPACEJACK_WINNINGS.
-  const payout = bet + SPACEJACK_WINNINGS;
-  game.player.credits += payout;
-  lines.push(`You win. Winnings: +${SPACEJACK_WINNINGS} credits.`);
-  lines.push(`Paid out: +${payout} credits total (stake + winnings).`);
-}
-
-function settleSpacejackLose(lines) {
-  lines.push("You lose.");
-}
-
-function resolveSpacejackDealerAndSettle() {
-  const lines = [];
-  const sj = game.spacejack;
-  if (!sj) return lines;
-
-  const bet = sj.bet;
-  const playerTotal = spacejackHandTotal(sj.playerHand);
-
-  const built = spacejackBuildDealerHand(sj.dealerUp, playerTotal, sj.rigOutcome);
-  const dealerHand = built.hand;
-  const dealerTotal = built.dealerTotal;
-
-  lines.push("");
-  lines.push(`Dealer reveals: ${spacejackHandString(dealerHand)} (total ${dealerTotal})`);
-
-  if (playerTotal > 21) {
-    lines.push("You bust.");
-    settleSpacejackLose(lines);
-  } else if (dealerTotal > 21) {
-    lines.push("Dealer busts.");
-    settleSpacejackWin(lines, bet);
-  } else if (playerTotal > dealerTotal) {
-    settleSpacejackWin(lines, bet);
-  } else {
-    // We shape the dealer to avoid ties; this catches all losses cleanly.
-    settleSpacejackLose(lines);
-  }
-
-  sj.finished = true;
-  game.spacejack = null;
-  return lines;
-}
-
-function handleSpacejackCommand(raw) {
-  const cmd = raw.trim().toLowerCase();
-  const sj = game.spacejack;
-  if (!sj) {
-    enterMainLoopTurn();
-    return;
-  }
-
-  if (cmd === "1") {
-    const currentTotal = spacejackHandTotal(sj.playerHand);
-    const c = spacejackRiggedPlayerHitCard(currentTotal, sj.rigOutcome);
-    sj.playerHand.push(c);
-
-    const pTot = spacejackHandTotal(sj.playerHand);
-
-    appendOutput("");
-    appendOutput(`You hit: ${c.rank}`);
-    appendOutput(`Your hand: ${spacejackHandString(sj.playerHand)} (total ${pTot})`);
-
-    if (pTot > 21) {
+    function resolveSpacejackDealerAndSettle() {
       const lines = [];
+      const sj = game.spacejack;
+      if (!sj) return lines;
+
+      const bet = sj.bet;
+      const playerTotal = spacejackHandTotal(sj.playerHand);
+
+      const built = spacejackBuildDealerHand(sj.dealerUp, playerTotal, sj.rigOutcome);
+      const dealerHand = built.hand;
+      const dealerTotal = built.dealerTotal;
+
       lines.push("");
-      lines.push("You bust.");
-      settleSpacejackLose(lines);
+      lines.push(`Dealer reveals: ${spacejackHandString(dealerHand)} (total ${dealerTotal})`);
+
+      if (playerTotal > 21) {
+        lines.push("You bust.");
+        settleSpacejackLose(lines);
+      } else if (dealerTotal > 21) {
+        lines.push("Dealer busts.");
+        settleSpacejackWin(lines, bet);
+      } else if (playerTotal > dealerTotal) {
+        settleSpacejackWin(lines, bet);
+      } else {
+        // We shape the dealer to avoid ties; this catches all losses cleanly.
+        settleSpacejackLose(lines);
+      }
+
       sj.finished = true;
       game.spacejack = null;
-      enterMainLoopTurn(lines);
-      return;
+      return lines;
     }
 
-    appendOutput("");
-    appendOutput("Choose:");
-    appendOutput("1. Hit");
-    appendOutput("2. Stand");
-    return;
-  }
+    function handleSpacejackCommand(raw) {
+      const cmd = raw.trim().toLowerCase();
+      const sj = game.spacejack;
+      if (!sj) {
+        enterMainLoopTurn();
+        return;
+      }
 
-  if (cmd === "2") {
-    const lines = resolveSpacejackDealerAndSettle();
-    enterMainLoopTurn(lines);
-    return;
-  }
+      if (cmd === "1") {
+        const currentTotal = spacejackHandTotal(sj.playerHand);
+        const c = spacejackRiggedPlayerHitCard(currentTotal, sj.rigOutcome);
+        sj.playerHand.push(c);
 
-  appendOutput("Enter 1 to hit or 2 to stand.");
-}
+        const pTot = spacejackHandTotal(sj.playerHand);
+
+        appendOutput("");
+        appendOutput(`You hit: ${c.rank}`);
+        appendOutput(`Your hand: ${spacejackHandString(sj.playerHand)} (total ${pTot})`);
+
+        if (pTot > 21) {
+          const lines = [];
+          lines.push("");
+          lines.push("You bust.");
+          settleSpacejackLose(lines);
+          sj.finished = true;
+          game.spacejack = null;
+          enterMainLoopTurn(lines);
+          return;
+        }
+
+        appendOutput("");
+        appendOutput("Choose:");
+        appendOutput("1. Hit");
+        appendOutput("2. Stand");
+
+        // Keep Spacejack buttons visible/consistent after each hit.
+        setContextMenu([
+          { cmd: "1", label: "Hit" },
+          { cmd: "2", label: "Stand" }
+        ], "Spacejack options");
+        return;
+      }
+
+      if (cmd === "2") {
+        const lines = resolveSpacejackDealerAndSettle();
+        enterMainLoopTurn(lines);
+        return;
+      }
+
+      appendOutput("Enter 1 to hit or 2 to stand.");
+    }
 
     // =========================================================
     // SHIPYARD / DEBT
@@ -2114,25 +2769,41 @@ function handleSpacejackCommand(raw) {
       appendOutput(`Credits: ${p.credits}`);
       appendOutput(`Cargo capacity: ${getTotalCargoUnits()}/${getCargoCapacity()} units`);
       appendOutput("\nCombat slot - choose one path (max tier 3, affects chance only):");
-      appendOutput(`  Combat rig (bounties): ${tierLabel(p.ship.combat_laser)}`);
-      appendOutput(`  Mining rig (mining):   ${tierLabel(p.ship.mining_laser)}`);
+      appendOutput(`  Combat laser (bounties): ${tierLabel(p.ship.combat_laser)}`);
+      appendOutput(`  Mining scanner (mining):   ${tierLabel(p.ship.mining_laser)}`);
       appendOutput("\nCargo slot - choose one path (max tier 3):");
       appendOutput(`  Smuggler hold (cargo missions + capacity): ${tierLabel(p.ship.smuggler_hold)} (capacity +${(p.ship.smuggler_hold || 0) * SMUGGLER_HOLD_CAPACITY_PER_TIER})`);
       appendOutput(`  Luxury cabin (passengers):                 ${tierLabel(p.ship.luxury_cabin)}`);
       appendOutput("\nChoose an option (each tier costs ~75% more than the last):");
-      appendOutput(`1. Upgrade combat rig (+10% bounty mission success chance) - ${combatCost !== null ? combatCost : "MAXED"}`);
-      appendOutput(`2. Upgrade mining rig (+10% mining mission & mining action success chance) - ${miningCost !== null ? miningCost : "MAXED"}`);
+      appendOutput(`1. Upgrade combat laser (+15% bounty mission success chance) - ${combatCost !== null ? combatCost : "MAXED"}`);
+      appendOutput(`2. Upgrade mining scanner (+10% mining mission & mining action success chance) - ${miningCost !== null ? miningCost : "MAXED"}`);
       appendOutput(`3. Upgrade smuggler hold (+10% cargo mission success chance; +${SMUGGLER_HOLD_CAPACITY_PER_TIER} capacity per tier) - ${smugglerCost !== null ? smugglerCost : "MAXED"}`);
       appendOutput(`4. Upgrade luxury cabin (+10% passenger mission success chance) - ${luxuryCost !== null ? luxuryCost : "MAXED"}`);
-      appendOutput("5. Leave shipyard");
+      appendOutput("0. Leave shipyard");
       game.mode = "shipyard";
+
+      setContextMenu([
+        { cmd: "1", label: "Upgrade combat laser" },
+        { cmd: "2", label: "Upgrade mining scanner" },
+        { cmd: "3", label: "Upgrade smuggler hold" },
+        { cmd: "4", label: "Upgrade luxury cabin" },
+        { cmd: "0", label: "Leave outfitter" }
+      ], "Outfitter options");
     }
 
     function showPayDebtPrompt() {
       appendOutput("\n--- DEBT PAYMENT ---");
       appendOutput(`Current debt: ${game.player.debt}`);
-      appendOutput("Enter amount to pay toward debt (0 to cancel).");
+      appendOutput("");
+      appendOutput("1. Pay as much as possible");
+      appendOutput("0. Cancel");
+      appendOutput("\nOr enter specific amount below:");
       game.mode = "payDebt";
+
+      setContextMenu([
+        { cmd: "1", label: "Pay Max" },
+        { cmd: "0", label: "Cancel" }
+      ], "Debt payment options");
     }
 
     // =========================================================
@@ -2184,7 +2855,7 @@ function handleSpacejackCommand(raw) {
         const data = JSON.parse(raw);
 
         game.systems = (data.systems || []).map(info => {
-          const s = new GameSystem(info.name);
+          const s = new GameSystem(info.name, info.wealth);
           s.wealth = info.wealth;
           s.market.prices = info.prices || {};
           return s;
@@ -2269,7 +2940,28 @@ function handleSpacejackCommand(raw) {
 
     function initNewGame() {
       clearOutput();
-      game.systems = SYSTEM_NAMES.map(name => new GameSystem(name));
+      
+      // Fixed 3/3/3 wealth distribution for 9 systems
+      const layout = [
+        "poor", "poor", "poor",
+        "average", "average", "average",
+        "rich", "rich", "rich"
+      ];
+      
+      // Shuffle names to keep discovery fresh, but wealth ratio stays absolute
+      const names = SYSTEM_NAMES.slice();
+      for (let i = names.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [names[i], names[j]] = [names[j], names[i]];
+      }
+
+      game.systems = names.map((name, idx) => new GameSystem(name, layout[idx]));
+
+      // Randomize the order of presentation in lists
+      for (let i = game.systems.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [game.systems[i], game.systems[j]] = [game.systems[j], game.systems[i]];
+      }
 
       // Always start at an average-wealth station.
       const avgStations = game.systems.filter(s => s.wealth === "average");
@@ -2297,6 +2989,8 @@ function handleSpacejackCommand(raw) {
       const cmd = raw.trim();
       if (!cmd) return;
 
+      autoScrollEnabled = true;
+
       const lower = cmd.toLowerCase();
       if (lower === "save") {
         saveGame();
@@ -2312,12 +3006,12 @@ function handleSpacejackCommand(raw) {
       }
 
       if (game.mode === "gameOver") {
-        if (lower === "load") {
-          loadGameSaved();
-        } else if (lower === "new") {
+        if (lower === "1" || lower === "new") {
           initNewGame();
+        } else if (lower === "2" || lower === "load") {
+          loadGameSaved();
         } else {
-          appendOutput("Type 'new' to start over or 'load' to resume a saved run.");
+          appendOutput("Enter 1 to start a new run or 2 to load a saved run.");
         }
         return;
       }
@@ -2376,12 +3070,12 @@ function handleSpacejackCommand(raw) {
       }
 
       const choiceNum = parseInt(cmd, 10);
-      if (Number.isNaN(choiceNum) || choiceNum < 1 || choiceNum > 5) {
+      if (Number.isNaN(choiceNum) || choiceNum < 0 || choiceNum > 4) {
         appendOutput("Enter a number from the list.");
         return;
       }
 
-      if (choiceNum === 5) {
+      if (choiceNum === 0) {
         appendOutput("You let the offers drift by. Plenty more trouble in the lanes.");
         game.pendingMissions = [];
         game.pendingMission = null;
@@ -2424,14 +3118,13 @@ function handleSpacejackCommand(raw) {
         saveGame();
       } else if (cmd === "9") {
         loadGameSaved();
-      } else if (cmd === "10") {
+      } else if (cmd === "0") {
         appendOutput("You power down the drives and let the dark close in.");
         fadeOutAndStopMusic(() => {
           bgmStarted = false;
           bgmFadedIn = false;
         });
-        game.mode = "gameOver";
-        appendOutput("Session ended. Type 'new' to start a fresh run, or 'load' to resume a save.");
+        showRunEndedMenu("Session ended.");
       } else {
         appendOutput("Invalid choice.");
       }
@@ -2450,7 +3143,7 @@ function handleSpacejackCommand(raw) {
       } else if (cmd === "4") {
         installUpgrade("luxury_cabin", "Luxury cabin", "smuggler_hold", "Smuggler hold");
         showShipyard();
-      } else if (cmd === "5") {
+      } else if (cmd === "0") {
         enterMainLoopTurn();
       } else {
         appendOutput("Invalid choice.");
@@ -2458,7 +3151,13 @@ function handleSpacejackCommand(raw) {
     }
 
     function handlePayDebtCommand(cmd) {
-      const amt = parseInt(cmd, 10);
+      let amt = parseInt(cmd, 10);
+      if (cmd.trim() === "1") {
+        const debt = Math.max(0, Math.floor(game.player.debt || 0));
+        const credits = Math.max(0, Math.floor(game.player.credits || 0));
+        amt = Math.min(debt, credits);
+      }
+
       if (Number.isNaN(amt) || amt < 0) {
         appendOutput("Enter a non-negative number.");
         return;
@@ -2467,6 +3166,7 @@ function handleSpacejackCommand(raw) {
         enterMainLoopTurn();
         return;
       }
+
       if (amt <= game.player.credits) {
         const lines = [];
         game.player.credits -= amt;
@@ -2485,10 +3185,31 @@ function handleSpacejackCommand(raw) {
     // WIRE INPUT & START
     // =========================================================
 
+    // Keyboard shortcuts for numeric menus.
+    // Works globally except when manual text entry is clearly the intended focus.
+    document.addEventListener("keydown", (e) => {
+      const isDigit = /^\d$/.test(e.key);
+      if (!isDigit) return;
+
+      // Only bypass if the user is actively typing in the command field
+      // (mostly for specific credit amounts or saves)
+      if (document.activeElement === commandEl) return;
+
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+      // Feedback for any valid digit press
+      triggerFeedback(e.key);
+
+      e.preventDefault();
+      e.stopPropagation();
+      ensureMusicPlaying();
+      processCommand(e.key);
+    }, true);
+
     commandEl.addEventListener("focus", () => {
       setTimeout(() => {
-        commandEl.scrollIntoView({ block: "center", behavior: "smooth" });
-        outputEl.scrollTop = outputEl.scrollHeight;
+        autoScrollEnabled = true;
+        scrollToBottom();
       }, 300);
     });
 
@@ -2502,8 +3223,10 @@ function handleSpacejackCommand(raw) {
       }
     });
 
+    // Start with no menu until the first showMainMenu() call.
+    clearContextMenu();
+
     initNewGame();
   </script>
 </body>
 </html>
-
